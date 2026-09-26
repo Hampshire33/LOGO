@@ -182,6 +182,8 @@
   .needs .sum { font-size: 14px; }
   .needs .sum b { font-weight: 600; }
   .tctl { display: grid; gap: 8px; }
+  .tpl summary { cursor: pointer; font-size: 13px; color: var(--link); padding-block: 2px; }
+  .tpl[open] summary { margin-bottom: 8px; }
   .aidesign { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
   .aidesign input[type=text] { width: 100%; }
   .kinds { gap: 6px; }
@@ -252,11 +254,20 @@
             </div>
             <div class="row" id="target-colors" aria-label="Main colours in the photo"></div>
             <div class="tctl" id="target-ctl" hidden>
-              <span class="small muted" id="kind-q">What is it? Tap one and a real LEGO design is made from it.</span>
+              <div class="row" id="ai-go-row" hidden>
+                <button id="ai-go" class="primary">Design this with AI</button>
+                <span class="small muted">Claude looks at this photo and designs it from your pile.</span>
+              </div>
+              <details id="tpl" class="tpl">
+              <summary id="tpl-sum">Or a free quick template (car, house, tree, animal)</summary>
+              <div class="tctl">
+              <span class="small muted" id="kind-q">What is it? Tap one and a ready-made LEGO design is fitted to your parts.</span>
               <div class="row kinds" id="kind-chips" role="group" aria-label="What the photo shows"></div>
               <label for="pic-width" id="size-row">Size: <b id="pic-width-v"></b> studs long</label>
               <input type="range" id="pic-width" min="6" max="28" step="1" value="16">
-              <label class="toggle"><input type="checkbox" id="pic-mine" checked> Only colours I have</label>
+              <label class="toggle small"><input type="checkbox" id="pic-mine" checked> Only colours I have</label>
+              </div>
+              </details>
             </div>
           </div>
         </div>
@@ -680,6 +691,9 @@
         cols.map((c) => `<span class="chip">${swatch(c.key)}${colorName(c.key)}</span>`).join('');
       $('ask-ideas').textContent = 'Design it from my parts';
       $('target-ctl').hidden = false;
+      $('ai-go-row').hidden = !CFG.aiEndpoint;
+      $('tpl').open = !CFG.aiEndpoint;
+      $('tpl-sum').textContent = CFG.aiEndpoint ? 'Or a free quick template (car, house, tree, animal)' : 'Ready-made designs (car, house, tree, animal)';
       state.picWidth = null;
       renderSuggestions(false, 'pic');
     } catch (err) {
@@ -1168,6 +1182,10 @@
     $('design-cost').textContent = `aims for ~${n} parts · about ${cents} US cents`;
   }
   $('design-size').addEventListener('change', designHint);
+  $('ai-go').addEventListener('click', () => {
+    $('aidesign').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('ai-design').click();
+  });
 
   function renderAiDesigns() {
     const box = $('design-slot');
