@@ -1,0 +1,9 @@
+{
+  "model": "claude-opus-5-5",
+  "why": "first design batch: 3 designs, estimated $0.75",
+  "cases": [
+    { "name": "car-photo", "target": "render:car", "targetColor": "yellow", "pile": "ones", "onlyMine": false },
+    { "name": "fire-truck", "want": "a red fire truck", "pile": "varied", "onlyMine": true },
+    { "name": "cat", "want": "a cat sitting down", "pile": "none", "onlyMine": false }
+  ]
+}

@@ -12,6 +12,8 @@ ALLOWED_ORIGINS = "https://hampshire33.github.io"
 MODEL = "claude-sonnet-5"
 PRECISE_MODEL = "claude-opus-5-5"
 ALLOW_PRECISE = "1"
+# AI designs (the "Design with AI" button): several long answers each, about 5-25 US cents.
+DESIGN_MODEL = "claude-opus-5-5"
 # Daily caps in photo reads (a small photo is 1 read; a busy phone photo 1 overview + up to 9 tiles).
 # At ~5-25 US cents a read with Opus 5.5, 200 reads a day is at most ~$50: set your console spend limit too.
 PER_IP_DAILY = "20"

@@ -1,0 +1,42 @@
+name: Evaluate designs
+
+# Claude designs the cases in eval/design-request.json; results (a picture per case, next to its
+# target, plus the model file) are published to the design-results branch. Each run spends API
+# credit (roughly 10-30 US cents per design with Opus 5.5): keep the case list short.
+
+on:
+  push:
+    branches: [main]
+    paths: ['eval/design-request.json']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  design:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tools
+        run: |
+          npm i --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Design
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node tools/design-bench.cjs
+      - name: Publish results to the design-results branch
+        if: always()
+        run: |
+          [ -d dist/design-results ] || exit 0
+          cd dist/design-results
+          git init -q -b design-results
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Design bench $(date -u +%FT%TZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" design-results

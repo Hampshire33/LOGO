@@ -10,9 +10,14 @@
  * in the Anthropic console as the final backstop.
  *
  *   GET  /v1/health          -> { ok, model, prompt }
- *   POST /v1/identify-tile   { image: <base64 jpeg>, n, of } -> { answer, usage }
+ *   POST /v1/identify-tile   { image: <base64 jpeg>, n, of, precise } -> { answer, usage, model }
+ *   POST /v1/design          { image?, want?, inventory, onlyMine } -> { model, check, rounds, usage }
  */
 import '../src/identify-prompt.js';
+import '../src/lego.js';
+import '../src/check.js';
+import '../src/inventory.js';
+import '../src/design-core.js';
 
 const P = globalThis.PILEBUILD_PROMPT;
 const MAX_B64 = 3_500_000; // ~2.6 MB of JPEG
@@ -38,7 +43,7 @@ export default {
     if (req.method === 'GET' && (url.pathname === '/v1/health' || url.pathname.startsWith('/v1/health/'))) {
       return json({ ok: !!env.ANTHROPIC_API_KEY, model: defaultModel, precise: preciseModel, prompt: P.VERSION }, 200, cors);
     }
-    if (req.method !== 'POST' || url.pathname !== '/v1/identify-tile') {
+    if (req.method !== 'POST' || (url.pathname !== '/v1/identify-tile' && url.pathname !== '/v1/design')) {
       return json({ error: 'Not found.', code: 'not_found' }, 404, cors);
     }
     if (!okOrigin) return json({ error: 'This server only answers the PileBuild site.', code: 'forbidden_origin' }, 403, cors);
@@ -53,15 +58,17 @@ export default {
     } catch (e) {
       return json({ error: 'Send JSON.', code: 'bad_request' }, 400, cors);
     }
+    const isDesign = url.pathname === '/v1/design';
     const image = typeof body.image === 'string' ? body.image : '';
-    if (!image || image.length > MAX_B64 || !image.startsWith('/9j/')) {
+    if ((!isDesign || image) && (!image || image.length > MAX_B64 || !image.startsWith('/9j/'))) {
       return json({ error: 'Send one JPEG image, base64-encoded, under 2.5 MB.', code: 'bad_image' }, 400, cors);
     }
 
     // "Precise" reads use the stronger, ~3x dearer model and count as 3 reads against the caps.
     const precise = body.precise === true && env.ALLOW_PRECISE !== '0';
-    const model = precise ? preciseModel : defaultModel;
-    const weight = precise ? 3 : 1;
+    const model = isDesign ? env.DESIGN_MODEL || 'claude-opus-5-5' : precise ? preciseModel : defaultModel;
+    // a design is several long answers: it counts as 5 reads against the caps
+    const weight = isDesign ? 5 : precise ? 3 : 1;
 
     // Daily caps (reads): per visitor and for the whole site. Needs the LIMITS KV binding.
     if (env.LIMITS) {
@@ -77,6 +84,8 @@ export default {
         env.LIMITS.put(`all:${day}`, String(Number(b || 0) + weight), { expirationTtl: 172800 }),
       ]);
     }
+
+    if (isDesign) return design(env, body, image, model, cors);
 
     const content = [
       { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } },
@@ -106,6 +115,31 @@ export default {
     return json({ answer, usage: r.data.usage || null, model }, 200, cors);
   },
 };
+
+// Claude designs a model from the photo and/or words, checked and fixed once (src/design-core.js).
+async function design(env, body, image, model, cors) {
+  const inventory = (Array.isArray(body.inventory) ? body.inventory : []).slice(0, 300).map((r) => ({
+    id: String(r && r.id || '').slice(0, 16),
+    color: String(r && r.color || '').slice(0, 24),
+    qty: Math.max(0, Math.min(999, Math.round(Number(r && r.qty) || 0))),
+  })).filter((r) => r.id && r.qty);
+  try {
+    const r = await globalThis.LEGO.designAI.run(async (payload) => {
+      const res = await callClaude(env, payload);
+      if (!res.ok) throw Object.assign(new Error(res.error), { code: res.code, status: res.status });
+      return res.data;
+    }, { image: image || null, want: body.want, inventory, onlyMine: !!body.onlyMine, model });
+    return json({
+      model: r.model,
+      check: { ok: r.check.ok, problems: r.check.problems.slice(0, 20), missing: r.check.missing, parts: r.check.parts, steps: r.check.steps },
+      rounds: r.rounds,
+      usage: r.usage,
+      modelName: r.modelName,
+    }, 200, cors);
+  } catch (e) {
+    return json({ error: e.message || 'Design failed.', code: e.code || 'design_failed' }, e.status || 502, cors);
+  }
+}
 
 async function callClaude(env, payload) {
   let res;
