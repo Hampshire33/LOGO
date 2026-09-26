@@ -58,6 +58,17 @@ Or open `mosaic.html`, drop in a photo and tune the same settings in the browser
 
 ![Photo, colour grid and mosaic](media/mosaic-compare.png)
 
+## PileBuild: from a photo of loose bricks to a build
+
+Open `app.html`. Photograph your loose bricks and PileBuild:
+
+1. **Finds each piece** in the photo (`src/detect.js`, no network needed; spread pieces so none touch).
+2. **Identifies them** into an editable parts list. On claude.ai, Claude reads the whole photo; on a standalone site, each detected piece is sent to [Brickognize](https://brickognize.com/). You can always add or fix rows by hand.
+3. **Suggests builds**: a sturdy striped stack generated from your own bricks and plates, how much of each ready-made model you already own (with a missing-parts list), and, on claude.ai, Claude ideas designed only from your parts. Add a second photo of what you want (a pet, a car) and Claude designs that instead.
+4. **Plays the instructions** with the booklet engine. Every model is checked for overlapping and loose parts (`src/check.js`, the same check as `tools/check-model.cjs`). "Copy model file" gives you a `src/models/*.js` file to render to video.
+
+`node tools/build-app.cjs` bundles the app into one file: `dist/app.html` for any web host, `dist/app.artifact.html` for publishing as a claude.ai artifact.
+
 ## Your own model
 
 1. Copy `src/models/cat.js` to `src/models/<name>.js` and change the steps.

@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PileBuild</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #EEF1F4;
+    --panel: #FFFFFF;
+    --panel-2: #F6F8FA;
+    --ink: #1B1F24;
+    --muted: #5B6571;
+    --line: #D6DCE2;
+    --accent: #FFCF1A;
+    --accent-ink: #1B1F24;
+    --link: #0B5CC2;
+    --good: #1F8A4C;
+    --warn: #B45309;
+    --bad: #C8200E;
+    --focus: #0B5CC2;
+    --canvas-ground: #FFFFFF;
+    --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+    --body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #111418;
+      --panel: #1A1F25;
+      --panel-2: #20262D;
+      --ink: #E8ECF0;
+      --muted: #9AA4AF;
+      --line: #2E363F;
+      --link: #6FA8F0;
+      --good: #4CC27F;
+      --warn: #F0A24A;
+      --bad: #F07564;
+      --focus: #6FA8F0;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111418;
+    --panel: #1A1F25;
+    --panel-2: #20262D;
+    --ink: #E8ECF0;
+    --muted: #9AA4AF;
+    --line: #2E363F;
+    --link: #6FA8F0;
+    --good: #4CC27F;
+    --warn: #F0A24A;
+    --bad: #F07564;
+    --focus: #6FA8F0;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { background: var(--bg); }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font: 15px/1.5 var(--body);
+    padding-inline: 16px;
+    padding-block: 20px 48px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 20px; }
+
+  header.top { display: grid; gap: 8px; padding-block: 4px 8px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand svg { flex: none; }
+  h1 { font: 800 clamp(28px, 5vw, 40px)/1 var(--display); letter-spacing: -0.02em; margin: 0; }
+  .tag { color: var(--muted); max-width: 52ch; margin: 0; text-wrap: balance; }
+
+  .cols { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+  @media (min-width: 980px) {
+    .cols { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
+    .right { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); }
+  }
+  .left, .right { display: grid; gap: 20px; min-width: 0; }
+
+  section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+  .head { display: flex; align-items: center; gap: 12px; }
+  .num { width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--panel); display: grid; place-items: center; font: 600 15px var(--body); flex: none; }
+  h2 { font: 600 21px/1.2 var(--display); margin: 0; text-wrap: balance; }
+  h3 { font: 600 13px/1.3 var(--body); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0; }
+  p { margin: 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  button, .btn {
+    font: 500 14px/1 var(--body); color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 7px; padding: 10px 14px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px; min-height: 40px;
+  }
+  button:hover:not(:disabled), .btn:hover { border-color: var(--muted); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+  button.primary:hover:not(:disabled) { filter: brightness(0.96); border-color: transparent; }
+  button.link { background: none; border: none; color: var(--link); padding: 4px 0; min-height: 0; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+  /* photo slots */
+  .slots { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 620px) { .slots { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); } }
+  .slot { display: grid; gap: 10px; align-content: start; min-width: 0; }
+  .frame { position: relative; border-radius: 8px; overflow: hidden; background: var(--panel-2); border: 1px dashed var(--line); aspect-ratio: 4 / 3; max-width: 100%; }
+  .frame canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .frame .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px; color: var(--muted); font-size: 14px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel-2); white-space: nowrap; }
+  .chip.example { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .chip.good { color: var(--good); }
+  .chip.warn { color: var(--warn); }
+  .chip.bad { color: var(--bad); }
+  .sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.25); flex: none; display: inline-block; }
+  .status { font-size: 13px; color: var(--muted); min-height: 1.5em; }
+  .status.err { color: var(--bad); }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+  /* parts table */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; table-layout: fixed; min-width: 420px; }
+  col.c-pic { width: 58px; } col.c-col { width: 30%; } col.c-qty { width: 82px; } col.c-x { width: 48px; }
+  td select { width: 100%; }
+  @media (max-width: 560px) {
+    table { min-width: 0; }
+    col.c-pic, td.pic, th:first-child { display: none; }
+    col.c-col { width: 34%; } col.c-qty { width: 70px; } col.c-x { width: 42px; }
+    th, td { padding-inline: 6px; }
+  }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); background: var(--panel-2); }
+  tr:last-child td { border-bottom: none; }
+  td.pic { width: 52px; padding-block: 4px; }
+  td.pic canvas { display: block; width: 44px; height: 34px; }
+  .pno { font-family: var(--mono); font-size: 13px; }
+  td.x { text-align: right; padding-inline: 4px 10px; }
+  select, input[type=number], input[type=text] {
+    font: 14px var(--body); color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 8px; min-height: 36px; max-width: 100%;
+  }
+  input[type=number] { width: 60px; font-variant-numeric: tabular-nums; }
+  .cell2 { display: grid; gap: 4px; min-width: 0; }
+  .odd td { background: color-mix(in srgb, var(--warn) 7%, transparent); }
+  .totals { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .totals b { color: var(--ink); font-weight: 600; }
+  .icon-btn { min-height: 32px; padding: 6px 9px; }
+
+  /* suggestions */
+  .sugs { display: grid; gap: 10px; }
+  .sug { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); text-align: left; cursor: pointer; width: 100%; font: inherit; color: inherit; min-height: 0; }
+  .sug:hover { border-color: var(--muted); }
+  .sug[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 4px 0 0 var(--accent); }
+  .sug .t { font-weight: 600; }
+  .sug .d { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
+  .bar { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--panel-2); position: relative; overflow: hidden; border: 1px solid var(--line); }
+  .bar i { position: absolute; inset: 0 auto 0 0; background: var(--muted); opacity: 0.35; }
+  .bar b { position: absolute; inset: 0 auto 0 0; background: var(--good); }
+  .ideas { display: grid; gap: 10px; }
+  .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+
+  /* player */
+  .player { display: grid; gap: 10px; }
+  .stage { background: var(--canvas-ground); border-radius: 8px; border: 1px solid var(--line); display: grid; place-items: center; overflow: hidden; max-width: 100%; }
+  .stage canvas { display: block; width: 100%; height: auto; max-height: 72vh; object-fit: contain; }
+  .controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+  input[type=range] { width: 100%; accent-color: var(--ink); }
+  .time { font: 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 88px; text-align: right; }
+  .problems { font: 12px/1.5 var(--mono); color: var(--bad); background: var(--panel-2); border-radius: 6px; padding: 8px 10px; max-height: 140px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+  details summary { cursor: pointer; font-size: 13px; color: var(--link); }
+  .miss { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  textarea { width: 100%; min-height: 120px; font: 12px/1.4 var(--mono); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  footer { color: var(--muted); font-size: 12px; max-width: 70ch; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg width="40" height="32" viewBox="0 0 40 32" aria-hidden="true">
+        <rect x="1" y="9" width="38" height="22" rx="2" fill="var(--accent)" stroke="var(--ink)" stroke-width="1.5"/>
+        <rect x="6" y="3" width="10" height="7" rx="1.5" fill="var(--accent)" stroke="var(--ink)" stroke-width="1.5"/>
+        <rect x="24" y="3" width="10" height="7" rx="1.5" fill="var(--accent)" stroke="var(--ink)" stroke-width="1.5"/>
+      </svg>
+      <h1>PileBuild</h1>
+    </div>
+    <p class="tag">Photograph your loose bricks. Get a parts list, ideas for what to build with them, and step-by-step instructions drawn from real LEGO parts.</p>
+  </header>
+
+  <div class="cols">
+    <div class="left">
+      <!-- 1 photos -->
+      <section class="panel" aria-labelledby="h-photos">
+        <div class="head"><span class="num">1</span><h2 id="h-photos">Your photos</h2></div>
+        <div class="slots">
+          <div class="slot">
+            <div class="row" style="justify-content: space-between"><h3>Loose bricks</h3><span class="chip example" id="pile-example">Example pile</span></div>
+            <div class="frame"><canvas id="pile-canvas" width="1200" height="900" aria-label="Photo of loose bricks with detected pieces outlined"></canvas></div>
+            <div class="row">
+              <label class="btn" for="pile-file">Take or choose photo</label>
+              <input type="file" id="pile-file" accept="image/*" capture="environment">
+              <button id="identify" class="primary">Identify parts</button>
+            </div>
+            <p class="status" id="pile-status"></p>
+          </div>
+          <div class="slot">
+            <div class="row" style="justify-content: space-between"><h3>What to build</h3><span class="chip">Optional</span></div>
+            <div class="frame">
+              <canvas id="target-canvas" width="800" height="600" aria-label="Photo of what you want to build"></canvas>
+              <div class="empty" id="target-empty">A photo of a pet, a car, a house… and we design it from your pile.</div>
+            </div>
+            <div class="row">
+              <label class="btn" for="target-file">Add photo</label>
+              <input type="file" id="target-file" accept="image/*">
+              <button id="target-clear" class="link" hidden>Remove</button>
+            </div>
+            <div class="row" id="target-colors" aria-label="Main colours in the photo"></div>
+          </div>
+        </div>
+        <p class="small muted">Tip: spread the pieces on a plain, even surface so none touch. Pieces that touch are counted as one.</p>
+      </section>
+
+      <!-- 2 parts -->
+      <section class="panel" aria-labelledby="h-parts">
+        <div class="head"><span class="num">2</span><h2 id="h-parts">Your parts</h2></div>
+        <div class="totals" id="totals"></div>
+        <div class="tablewrap">
+          <table>
+            <colgroup><col class="c-pic"><col><col class="c-col"><col class="c-qty"><col class="c-x"></colgroup>
+            <thead><tr><th></th><th>Part</th><th>Colour</th><th>Qty</th><th></th></tr></thead>
+            <tbody id="parts-body"></tbody>
+          </table>
+        </div>
+        <div class="row">
+          <button id="add-row">Add a part</button>
+          <button id="clear-rows" class="link">Clear list</button>
+        </div>
+        <p class="small muted" id="parts-note"></p>
+      </section>
+    </div>
+
+    <div class="right">
+      <!-- 3 build -->
+      <section class="panel" aria-labelledby="h-build">
+        <div class="head"><span class="num">3</span><h2 id="h-build">What to build</h2></div>
+
+        <div class="player">
+          <div class="stage"><canvas id="film" width="1080" height="1920" aria-label="Animated building instructions"></canvas></div>
+          <div class="controls">
+            <button id="play" class="icon-btn" aria-label="Pause">❚❚</button>
+            <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" aria-label="Position in the instructions">
+            <span class="time" id="time">0.0 / 0.0 s</span>
+          </div>
+          <div class="row">
+            <label class="toggle"><input type="checkbox" id="landscape"> Landscape</label>
+            <span id="check-chip"></span>
+            <button id="copy-json" class="link">Copy model file</button>
+          </div>
+          <div class="problems" id="problems" hidden></div>
+        </div>
+
+        <div class="sugs">
+          <h3>From your parts</h3>
+          <div id="gen-slot"></div>
+          <div id="ai-block" class="ideas">
+            <div class="row">
+              <button id="ask-ideas" class="primary">Ask Claude for ideas</button>
+              <label class="toggle"><input type="checkbox" id="only-mine" checked> Only my parts</label>
+            </div>
+            <p class="status" id="ai-status"></p>
+            <div id="ideas" class="ideas"></div>
+          </div>
+          <p class="small muted" id="ai-off" hidden>Claude ideas and designs work when this page is opened on claude.ai. The stack below is built on your device.</p>
+          <h3 style="margin-top: 6px">Ready-made models</h3>
+          <div id="lib-list" class="sugs"></div>
+        </div>
+      </section>
+      <textarea id="json-out" hidden readonly aria-label="Model file"></textarea>
+    </div>
+  </div>
+
+  <footer>Parts are real LEGO elements with BrickLink numbers; models are checked on screen for overlaps and loose parts, not built by hand. LEGO is a trademark of the LEGO Group, which does not sponsor or endorse this project. Engine based on siliconbag/lego-build (MIT).</footer>
+</div>
+
+<!-- @inline-start -->
+<script src="src/lego.js"></script>
+<script src="src/booklet.js"></script>
+<script src="src/check.js"></script>
+<script src="src/inventory.js"></script>
+<script src="src/detect.js"></script>
+<script src="src/recognize.js"></script>
+<script src="src/sample-pile.js"></script>
+<script src="src/models/cat.js"></script>
+<script src="src/models/microduck.js"></script>
+<!-- @inline-end -->
+<script>
+(function () {
+  'use strict';
+  const LEGO = window.LEGO;
+  const INV = LEGO.inv;
+  const $ = (id) => document.getElementById(id);
+
+  // ---------------------------------------------------------------- state
+
+  const state = {
+    pile: null,          // { img, boxes, example }
+    target: null,        // { img, blob }
+    inv: [],
+    invExample: false,
+    choice: null,        // { key, model, check }
+    ideas: [],
+    designs: {},         // idea title -> { model, check }
+  };
+  let sample = null;
+  let caps = null;
+
+  // ---------------------------------------------------------------- helpers
+
+  const colorOptions = Object.values(LEGO.COLORS).map((c) => `<option value="${c.key}">${c.name}</option>`).join('');
+  const partOptions = LEGO.ORDER.map((id) => `<option value="${id}">${id} · ${LEGO.LIB[id].label}</option>`).join('');
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const swatch = (key) => `<span class="sw" style="background:${LEGO.COLORS[key] ? LEGO.COLORS[key].hex : 'transparent'}"></span>`;
+  const colorName = (key) => (LEGO.COLORS[key] ? LEGO.COLORS[key].name : key || 'unknown');
+
+  function setStatus(el, text, err) {
+    el.textContent = text || '';
+    el.classList.toggle('err', !!err);
+  }
+
+  function claudeError(e) {
+    const code = e && e.code;
+    const copy = {
+      not_granted: 'Claude access was declined for this page. You can still add parts by hand.',
+      rate_limited: 'Too many requests just now. Wait a minute, then try again.',
+      images_unavailable: 'Photos cannot be sent to Claude from this view. Add parts by hand instead.',
+      image_rejected: 'That photo could not be read. Try a JPEG or PNG.',
+      invalid_json: 'The answer did not come back in the expected form. Try again.',
+      prompt_too_large: 'The parts list is too long to send in one go. Remove some rows and try again.',
+      refused: 'Claude declined this request.',
+      cancelled: '',
+    };
+    return code in copy ? copy[code] : `Claude could not answer (${code || 'error'}). Try again in a moment.`;
+  }
+
+  async function toBlob(img, maxSide) {
+    const W0 = img.naturalWidth || img.width;
+    const H0 = img.naturalHeight || img.height;
+    const s = Math.min(1, (maxSide || 1600) / Math.max(W0, H0));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(W0 * s);
+    cv.height = Math.round(H0 * s);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    return new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.88));
+  }
+
+  function loadImage(file) {
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => rej(new Error('not an image'));
+      img.src = url;
+    });
+  }
+
+  // Draw an image into a canvas frame, letterboxed; returns the mapping for overlays.
+  function paint(canvas, img) {
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    const s = Math.min(W / iw, H / ih);
+    const ox = (W - iw * s) / 2, oy = (H - ih * s) / 2;
+    ctx.drawImage(img, ox, oy, iw * s, ih * s);
+    return { s, ox, oy, ctx };
+  }
+
+  // ---------------------------------------------------------------- 1. pile photo
+
+  function showPile() {
+    const p = state.pile;
+    const m = paint($('pile-canvas'), p.img);
+    const ctx = m.ctx;
+    ctx.lineWidth = 3;
+    p.boxes.forEach((b, i) => {
+      const x = m.ox + b.x * m.s, y = m.oy + b.y * m.s, w = b.w * m.s, h = b.h * m.s;
+      ctx.strokeStyle = '#FFCF1A';
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = '#1B1F24';
+      ctx.fillRect(x, y - 1, 26, 20);
+      ctx.fillStyle = '#FFCF1A';
+      ctx.font = '600 13px "IBM Plex Sans", sans-serif';
+      ctx.fillText(String(i + 1), x + 5, y + 14);
+    });
+    $('pile-example').hidden = !p.example;
+  }
+
+  function setPile(img, example) {
+    const found = LEGO.detect(img);
+    state.pile = { img, boxes: found.boxes, example };
+    showPile();
+    const n = found.boxes.length;
+    setStatus($('pile-status'), n
+      ? `Found ${n} separate piece${n === 1 ? '' : 's'}. ` + (example ? 'This is an example; its parts list is already filled in.' : 'Now identify them.')
+      : 'No separate pieces found. Try a plainer background with more light.');
+  }
+
+  $('pile-file').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try {
+      const img = await loadImage(f);
+      setPile(img, false);
+      state.pile.file = f;
+    } catch (err) {
+      setStatus($('pile-status'), 'That file could not be opened as a photo.', true);
+    }
+    e.target.value = '';
+  });
+
+  $('identify').addEventListener('click', async () => {
+    if (!state.pile) return;
+    const btn = $('identify');
+    btn.disabled = true;
+    try {
+      if (sample && caps && caps.images) {
+        setStatus($('pile-status'), 'Claude is reading the photo. This takes up to half a minute…');
+        const blob = await toBlob(state.pile.img);
+        const r = await LEGO.recognize.claude(sample, blob, state.pile.boxes.length);
+        setInventory(r.rows, false);
+        const n = INV.count(state.inv);
+        setStatus($('pile-status'), `Identified ${n} piece${n === 1 ? '' : 's'}. Check the list below and fix anything that looks wrong.` + (r.notes ? ' Note: ' + r.notes : ''));
+      } else if (!window.claude) {
+        if (!state.pile.boxes.length) throw { local: 'No pieces were found to identify.' };
+        const r = await LEGO.recognize.brickognize(state.pile.img, state.pile.boxes, (d, t) =>
+          setStatus($('pile-status'), `Identifying piece ${d} of ${t}…`));
+        if (!r.rows.length) throw { local: 'Brickognize could not be reached from this page (' + (r.lastError || 'no answer') + '). Add parts by hand below.' };
+        setInventory(r.rows, false);
+        setStatus($('pile-status'), `Identified ${INV.count(r.rows)} pieces` + (r.failed ? `, ${r.failed} could not be named` : '') + '. Check the list below.');
+      } else {
+        throw { local: 'Photo reading needs Claude, which is not available in this view. Add parts by hand below.' };
+      }
+    } catch (e) {
+      setStatus($('pile-status'), e && e.local ? e.local : claudeError(e), true);
+    }
+    btn.disabled = false;
+  });
+
+  // ---------------------------------------------------------------- 1b. target photo
+
+  $('target-file').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    try {
+      const img = await loadImage(f);
+      state.target = { img, blob: null };
+      paint($('target-canvas'), img);
+      $('target-empty').hidden = true;
+      $('target-clear').hidden = false;
+      const cols = LEGO.recognize.mainColors(img, 4);
+      $('target-colors').innerHTML = '<span class="small muted">Main colours:</span>' +
+        cols.map((c) => `<span class="chip">${swatch(c.key)}${colorName(c.key)}</span>`).join('');
+      $('ask-ideas').textContent = 'Design it from my parts';
+    } catch (err) {
+      $('target-colors').innerHTML = '<span class="status err">That file could not be opened as a photo.</span>';
+    }
+    e.target.value = '';
+  });
+  $('target-clear').addEventListener('click', () => {
+    state.target = null;
+    $('target-canvas').getContext('2d').clearRect(0, 0, 800, 600);
+    $('target-empty').hidden = false;
+    $('target-clear').hidden = true;
+    $('target-colors').innerHTML = '';
+    $('ask-ideas').textContent = 'Ask Claude for ideas';
+  });
+
+  // ---------------------------------------------------------------- 2. parts list
+
+  function setInventory(rows, example) {
+    state.inv = INV.from(rows);
+    state.invExample = example;
+    state.ideas = [];
+    state.designs = {};
+    renderParts();
+    renderSuggestions(true);
+  }
+
+  function thumb(id, color) {
+    const cv = document.createElement('canvas');
+    cv.width = 88;
+    cv.height = 68;
+    if (LEGO.LIB[id]) {
+      const spec = { id, color: LEGO.COLORS[color] ? color : 'lbg' };
+      const sz = LEGO.partSize(spec, 38, 28);
+      const sc = Math.min(76 / sz.w, 56 / sz.h, 40);
+      LEGO.drawPart(cv.getContext('2d'), spec, 44, 34, sc, { theta: 38, phi: 28 });
+    }
+    return cv;
+  }
+
+  function renderParts() {
+    const body = $('parts-body');
+    body.innerHTML = '';
+    state.inv.forEach((r, i) => {
+      const usable = INV.usable(r);
+      const tr = document.createElement('tr');
+      if (!usable) tr.className = 'odd';
+      const inLib = !!LEGO.LIB[r.id];
+      tr.innerHTML =
+        '<td class="pic"></td>' +
+        `<td><div class="cell2"><select data-i="${i}" data-f="id" aria-label="Part">${inLib ? '' : `<option value="${esc(r.id)}">${esc(r.id)} · ${esc(r.name || 'not in library')}</option>`}${partOptions}</select>` +
+        (inLib ? '' : '<span class="small muted">Not in the drawing library yet</span>') + '</div></td>' +
+        `<td><div class="cell2"><select data-i="${i}" data-f="color" aria-label="Colour">${LEGO.COLORS[r.color] ? '' : `<option value="${esc(r.color)}">${esc(r.color || 'unknown')}</option>`}${colorOptions}</select></div></td>` +
+        `<td class="qty"><input type="number" min="0" max="999" value="${r.qty}" data-i="${i}" data-f="qty" aria-label="Quantity"></td>` +
+        `<td class="x"><button class="icon-btn" data-del="${i}" aria-label="Remove row">✕</button></td>`;
+      tr.querySelector('.pic').appendChild(thumb(r.id, r.color));
+      tr.querySelector('[data-f=id]').value = r.id;
+      tr.querySelector('[data-f=color]').value = r.color;
+      body.appendChild(tr);
+    });
+    if (!state.inv.length) {
+      body.innerHTML = '<tr><td colspan="5" class="muted">No parts yet. Identify a photo, or add parts by hand.</td></tr>';
+    }
+    const kinds = state.inv.length;
+    const pieces = INV.count(state.inv);
+    const odd = state.inv.filter((r) => !INV.usable(r)).length;
+    $('totals').innerHTML =
+      `<span><b>${pieces}</b> pieces</span><span><b>${kinds}</b> kinds</span>` +
+      (odd ? `<span><b>${odd}</b> not drawable yet</span>` : '') +
+      (state.invExample ? '<span class="chip example">Example list</span>' : '');
+    $('parts-note').textContent = odd
+      ? 'Highlighted rows are parts or colours the engine cannot draw yet. They stay in your list but are not used in builds.'
+      : '';
+  }
+
+  $('parts-body').addEventListener('change', (e) => {
+    const t = e.target;
+    const i = Number(t.dataset.i);
+    if (!(i >= 0)) return;
+    const r = state.inv[i];
+    if (t.dataset.f === 'qty') r.qty = Math.max(0, Math.round(Number(t.value) || 0));
+    else r[t.dataset.f] = t.value;
+    if (t.dataset.f === 'id' && LEGO.LIB[t.value]) r.name = LEGO.LIB[t.value].label;
+    setInventory(state.inv.filter((x) => x.qty > 0), false);
+  });
+  $('parts-body').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-del]');
+    if (!b) return;
+    state.inv.splice(Number(b.dataset.del), 1);
+    setInventory(state.inv, false);
+  });
+  $('add-row').addEventListener('click', () => {
+    state.inv.push({ id: '3001', color: 'red', qty: 1, name: LEGO.LIB['3001'].label });
+    setInventory(state.inv, false);
+  });
+  $('clear-rows').addEventListener('click', () => setInventory([], false));
+
+  // ---------------------------------------------------------------- 3. suggestions
+
+  function sugButton(key, title, detail, extra) {
+    const b = document.createElement('button');
+    b.className = 'sug';
+    b.dataset.key = key;
+    b.setAttribute('aria-pressed', state.choice && state.choice.key === key ? 'true' : 'false');
+    b.innerHTML = `<span class="t">${esc(title)}</span>${extra || ''}<span class="d">${detail}</span>`;
+    return b;
+  }
+
+  function renderSuggestions(autoPick) {
+    // generated from your parts
+    const gen = INV.generate(state.inv);
+    const gs = $('gen-slot');
+    gs.innerHTML = '';
+    let first = null;
+    if (gen) {
+      const c = LEGO.checkModel(gen);
+      const n = gen.steps.flat().length;
+      const b = sugButton('gen', gen.title, `A sturdy striped block from ${n} of your bricks and plates, joints staggered like brickwork. Works on any pile.`,
+        `<span class="chip ${c.problems.length ? 'bad' : 'good'}">${n} parts</span>`);
+      b.addEventListener('click', () => choose('gen', gen));
+      gs.appendChild(b);
+      first = ['gen', gen];
+    } else {
+      gs.innerHTML = '<p class="small muted">Add a few bricks or plates (1 or 2 studs wide) to get a build from your own parts.</p>';
+    }
+
+    // Claude ideas
+    const box = $('ideas');
+    box.innerHTML = '';
+    state.ideas.forEach((idea, i) => {
+      const done = state.designs[idea.title];
+      const extra = done ? `<span class="chip ${done.check.ok ? 'good' : 'warn'}">${done.check.parts} parts</span>` : `<span class="chip">about ${esc(idea.parts || '?')} parts</span>`;
+      const b = sugButton('idea' + i, idea.title, esc(idea.pitch || '') + (done ? '' : ' <b>Tap to design it.</b>'), extra);
+      b.addEventListener('click', () => (done ? choose('idea' + i, done.model, done.check) : designIdea(i)));
+      box.appendChild(b);
+    });
+
+    // library models with coverage
+    const list = $('lib-list');
+    list.innerHTML = '';
+    Object.entries(window.MODELS).forEach(([k, model]) => {
+      const cov = INV.coverage(state.inv, model);
+      const pe = Math.round((100 * cov.exact) / cov.total);
+      const ps = Math.round((100 * cov.shape) / cov.total);
+      const miss = cov.missing.reduce((s, m) => s + m.qty, 0);
+      const b = sugButton('lib-' + k, model.title,
+        `You have ${pe}% of the exact parts and ${ps}% of the shapes (in any colour). ${miss ? `Missing ${miss} pieces.` : 'You can build it.'}`,
+        `<span class="chip ${pe === 100 ? 'good' : ''}">${cov.total} parts</span><span class="bar" aria-hidden="true"><i style="width:${ps}%"></i><b style="width:${pe}%"></b></span>`);
+      b.addEventListener('click', () => choose('lib-' + k, model));
+      list.appendChild(b);
+      if (cov.missing.length) {
+        const d = document.createElement('details');
+        d.innerHTML = `<summary>Missing parts for ${esc(model.title)}</summary><div class="miss">` +
+          cov.missing.map((m) => `<span class="chip">${swatch(m.color)}<span class="pno">${m.qty}× ${m.id}</span> ${esc(LEGO.LIB[m.id].label)}</span>`).join('') + '</div>';
+        list.appendChild(d);
+      }
+    });
+
+    if (autoPick || !state.choice) {
+      if (first) choose(first[0], first[1]);
+      else choose('lib-cat', window.MODELS.cat);
+    } else {
+      markChoice();
+    }
+  }
+
+  function markChoice() {
+    document.querySelectorAll('.sug').forEach((b) => b.setAttribute('aria-pressed', state.choice && b.dataset.key === state.choice.key ? 'true' : 'false'));
+  }
+
+  // ---------------------------------------------------------------- Claude ideas and designs
+
+  $('ask-ideas').addEventListener('click', async () => {
+    if (!sample) return;
+    const usable = state.inv.filter(INV.usable);
+    if (!usable.length) {
+      setStatus($('ai-status'), 'Add some parts first, from a photo or by hand.', true);
+      return;
+    }
+    const btn = $('ask-ideas');
+    btn.disabled = true;
+    setStatus($('ai-status'), state.target ? 'Claude is looking at your photo and your parts…' : 'Claude is thinking about your parts…');
+    try {
+      const target = state.target ? (state.target.blob = state.target.blob || (await toBlob(state.target.img, 1200))) : null;
+      state.ideas = await LEGO.ai.ideas(sample, state.inv, target);
+      state.designs = {};
+      setStatus($('ai-status'), state.ideas.length ? 'Pick an idea and Claude designs it, checking every part against the rules as it goes.' : 'No ideas came back. Try again.');
+      renderSuggestions(false);
+    } catch (e) {
+      setStatus($('ai-status'), claudeError(e), true);
+    }
+    btn.disabled = false;
+  });
+
+  let designing = null;
+  async function designIdea(i) {
+    const idea = state.ideas[i];
+    if (!idea || !sample) return;
+    if (designing) designing.abort();
+    designing = new AbortController();
+    setStatus($('ai-status'), `Designing “${idea.title}”. This can take a minute or two…`);
+    try {
+      const target = state.target ? (state.target.blob = state.target.blob || (await toBlob(state.target.img, 1200))) : null;
+      const r = await LEGO.ai.design(sample, state.inv, idea, target, { onlyMine: $('only-mine').checked, signal: designing.signal });
+      state.designs[idea.title] = r;
+      setStatus($('ai-status'), r.check.ok
+        ? `“${r.model.title}” is ready: ${r.check.parts} parts in ${r.check.steps} steps, all checked.`
+        : `“${r.model.title}” is ready, with problems listed under the player.` + (r.dropped.length ? ` ${r.dropped.length} unknown parts were left out.` : ''));
+      renderSuggestions(false);
+      choose('idea' + i, r.model, r.check);
+    } catch (e) {
+      setStatus($('ai-status'), claudeError(e), true);
+    }
+    designing = null;
+  }
+
+  // ---------------------------------------------------------------- player
+
+  const film = { view: null, t: 0, playing: true, last: null };
+  const fc = $('film');
+  const fctx = fc.getContext('2d');
+
+  function choose(key, model, check) {
+    state.choice = { key, model };
+    markChoice();
+    const c = check || (() => {
+      const r = LEGO.checkModel(model);
+      const over = INV.coverage(state.inv, model).missing;
+      return { ok: !r.problems.length, problems: r.problems.map((p) => p.text), parts: r.parts, extraParts: [], missing: over };
+    })();
+    const chip = $('check-chip');
+    const problems = (c.problems || []).concat(c.extraParts || []);
+    chip.innerHTML = problems.length
+      ? `<span class="chip bad">${problems.length} problem${problems.length === 1 ? '' : 's'}</span>`
+      : '<span class="chip good">Checked: no overlaps, every part held</span>';
+    $('problems').hidden = !problems.length;
+    $('problems').textContent = problems.join('\n');
+    $('json-out').hidden = true;
+    loadFilm();
+  }
+
+  function loadFilm() {
+    if (!state.choice) return;
+    film.view = LEGO.booklet(state.choice.model, $('landscape').checked ? 'horizontal' : 'vertical');
+    fc.width = film.view.W;
+    fc.height = film.view.H;
+    film.t = 0;
+    film.last = null;
+    $('scrub').max = String(film.view.duration);
+  }
+  $('landscape').addEventListener('change', loadFilm);
+
+  function tick(now) {
+    if (film.view) {
+      if (film.playing) {
+        if (film.last != null) film.t += (now - film.last) / 1000;
+        if (film.t > film.view.duration) film.t = 0;
+      }
+      film.last = now;
+      film.view.draw(fctx, film.t);
+      $('scrub').value = String(film.t);
+      $('time').textContent = `${film.t.toFixed(1)} / ${film.view.duration.toFixed(1)} s`;
+    }
+    requestAnimationFrame(tick);
+  }
+  function setPlaying(p) {
+    film.playing = p;
+    film.last = null;
+    $('play').textContent = p ? '❚❚' : '▶';
+    $('play').setAttribute('aria-label', p ? 'Pause' : 'Play');
+  }
+  $('play').addEventListener('click', () => setPlaying(!film.playing));
+  fc.addEventListener('click', () => setPlaying(!film.playing));
+  $('scrub').addEventListener('input', (e) => {
+    film.t = Number(e.target.value);
+    setPlaying(false);
+  });
+
+  $('copy-json').addEventListener('click', async () => {
+    if (!state.choice) return;
+    const m = state.choice.model;
+    const slug = (m.title || 'model').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'model';
+    const text = `// src/models/${slug}.js, made in PileBuild\n(function (root) {\n  root.MODELS = root.MODELS || {};\n  root.MODELS['${slug}'] = ${JSON.stringify({ title: m.title, theta: m.theta, phi: m.phi, steps: m.steps })};\n})(typeof window !== 'undefined' ? window : globalThis);\n`;
+    const out = $('json-out');
+    out.value = text;
+    try {
+      await navigator.clipboard.writeText(text);
+      $('copy-json').textContent = 'Copied';
+      setTimeout(() => ($('copy-json').textContent = 'Copy model file'), 1600);
+    } catch (e) {
+      out.hidden = false;
+      out.focus();
+      out.select();
+    }
+  });
+
+  // ---------------------------------------------------------------- start
+
+  const ex = LEGO.samplePile();
+  setPile(ex.canvas, true);
+  setInventory(ex.inventory, true);
+  requestAnimationFrame(tick);
+
+  // Claude lights up when the page runs on claude.ai; elsewhere the page works without it.
+  (async () => {
+    try {
+      sample = window.claude && window.claude.use ? await window.claude.use('sample') : null;
+      caps = sample ? await sample.limits().catch(() => null) : null;
+    } catch (e) {
+      sample = null;
+    }
+    $('ai-block').hidden = !sample;
+    $('ai-off').hidden = !!sample;
+  })();
+  $('ai-block').hidden = true;
+})();
+</script>
+</body>
+</html>
