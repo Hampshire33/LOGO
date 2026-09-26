@@ -29,6 +29,18 @@
     ['tan', 5], ['orange', 4], ['brown', 4], ['lime', 3], ['azure', 3], ['darkRed', 2], ['darkBlue', 2], ['brightGreen', 2], ['pink', 1],
   ];
 
+  // Real LEGO plastic colours (Rebrickable RGB), not the booklet palette the engine draws with
+  // (which lifts black and softens white for print): test photos should look like photos.
+  const REAL = {
+    red: 'C91A09', blue: '0055BF', yellow: 'F2CD37', white: 'F4F4F4', black: '1B2A34', lbg: 'A0A5A9', dbg: '6C6E68',
+    green: '237841', tan: 'E4CD9E', orange: 'FE8A18', brown: '582A12', lime: 'BBE90B', azure: '36AEBF',
+    darkRed: '720E0F', darkBlue: '0A3463', brightGreen: '4B9F4A', pink: 'E4ADC8',
+  };
+  const rgbOf = (k) => {
+    const n = parseInt(REAL[k] || '888888', 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+
   function rng(seed) {
     let s = seed >>> 0 || 1;
     return () => {
@@ -110,7 +122,7 @@
       ctx.shadowBlur = 10;
       ctx.shadowOffsetX = 4;
       ctx.shadowOffsetY = 6;
-      LEGO.drawPart(ctx, p, cx, cy, scale * (0.85 + r() * 0.3), { theta, phi });
+      LEGO.drawPart(ctx, Object.assign({ rgb: rgbOf(p.color) }, p), cx, cy, scale * (0.85 + r() * 0.3), { theta, phi });
       ctx.restore();
     });
 

@@ -30,7 +30,7 @@ export default {
       vary: 'origin',
     };
     const url = new URL(req.url);
-    const model = env.MODEL || 'claude-sonnet-5';
+    const model = env.MODEL || 'claude-opus-5-5';
 
     if (req.method === 'OPTIONS') return new Response(null, { status: okOrigin ? 204 : 403, headers: cors });
     if (req.method === 'GET' && url.pathname === '/v1/health') {
@@ -60,8 +60,8 @@ export default {
     if (env.LIMITS) {
       const day = new Date().toISOString().slice(0, 10);
       const ip = req.headers.get('cf-connecting-ip') || 'unknown';
-      const perIp = Number(env.PER_IP_DAILY || 60);
-      const all = Number(env.DAILY_TILES || 1500);
+      const perIp = Number(env.PER_IP_DAILY || 20);
+      const all = Number(env.DAILY_TILES || 200);
       const [a, b] = await Promise.all([env.LIMITS.get(`ip:${day}:${ip}`), env.LIMITS.get(`all:${day}`)]);
       if (Number(a || 0) >= perIp) return json({ error: 'Daily limit for this device reached. Try again tomorrow.', code: 'limit_visitor' }, 429, cors);
       if (Number(b || 0) >= all) return json({ error: 'The site reached its daily reading limit. Try again tomorrow.', code: 'limit_site' }, 429, cors);
@@ -77,8 +77,10 @@ export default {
     ];
     const base = { model, max_tokens: 8000, system: P.SYSTEM, messages: [{ role: 'user', content }] };
 
-    // Forced, strict tool call first; some models do not allow forcing, so fall back to auto.
-    let r = await callClaude(env, Object.assign({}, base, { tools: [P.TOOL], tool_choice: { type: 'tool', name: P.TOOL.name } }));
+    // Forced, strict tool call where the model allows it; Opus 5.5, Fable and Mythos do not allow
+    // forcing, so they are asked with the tool offered (auto). Any 400 falls back to auto too.
+    const canForce = !/opus-5-5|fable|mythos/.test(model);
+    let r = await callClaude(env, Object.assign({}, base, { tools: [P.TOOL], tool_choice: canForce ? { type: 'tool', name: P.TOOL.name } : { type: 'auto' } }));
     if (r.status === 400) {
       const loose = Object.assign({}, P.TOOL);
       delete loose.strict;

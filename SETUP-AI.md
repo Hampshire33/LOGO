@@ -9,12 +9,18 @@ It takes about 15 minutes, once. After that, every push to `main` keeps the serv
 ## What it costs
 
 Claude usage is billed to your Anthropic account, separately from a claude.ai plan (and not
-covered by Claude Code cloud credits). A small photo is read in one go; a 12-megapixel phone
-photo in up to 9 parts. Each part costs roughly 2 to 3 US cents with the default model (a
-Sonnet-class model), so a photo costs from about 3 cents (small) to about 25 cents (large, busy).
-Check current prices at https://platform.claude.com before relying on these figures. The server has built-in daily caps (60 photo parts per visitor, 1,500 for the
-whole site); change them in `worker/wrangler.toml`. Also set a monthly spend limit in the
-console as a backstop.
+covered by Claude Code cloud credits). The server uses Claude Opus 5.5 ($4 / $20 per million
+input / output tokens), which identified parts about twice as well as Sonnet 5 on the test
+bench (see EVAL-RESULTS.md). Measured costs:
+
+- a small photo (web image, few hundred pixels): about 5-6 US cents
+- a clear table photo (1-2 megapixels): about 20-25 cents
+- a busy phone photo that fills the frame: an overview plus up to 9 tiles, up to about $1-2
+
+The server has daily caps counted in reads: 20 per visitor and 200 for the whole site (at most
+roughly $50 a day). Change them in `worker/wrangler.toml`. To spend about a third as much, set
+`MODEL = "claude-sonnet-5"` there (lower accuracy). Always set a monthly spend limit in the
+console as the backstop.
 
 ## 1. Anthropic API key
 

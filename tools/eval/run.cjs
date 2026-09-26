@@ -11,7 +11,7 @@ const path = require('path');
 const args = process.argv.slice(2);
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const ENGINE = opt('--engine', 'offline');
-const MODEL = opt('--model', 'claude-sonnet-5');
+const MODEL = opt('--model', 'claude-opus-5-5');
 const PER = Number(opt('--per-kind', 3));
 const KINDS = opt('--kinds', 'spread,heap,carpet,dense').split(',');
 const OUT = opt('--out', path.resolve(__dirname, '../../dist/eval-report.md'));
@@ -52,7 +52,8 @@ async function callClaude(b64, n, of) {
     { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
     { type: 'text', text: P.userText(n, of) },
   ];
-  const body = { model: MODEL, max_tokens: 8000, system: P.SYSTEM, messages: [{ role: 'user', content }], tools: [P.TOOL], tool_choice: { type: 'tool', name: P.TOOL.name } };
+  const canForce = !/opus-5-5|fable|mythos/.test(MODEL);
+  const body = { model: MODEL, max_tokens: 8000, system: P.SYSTEM, messages: [{ role: 'user', content }], tools: [P.TOOL], tool_choice: canForce ? { type: 'tool', name: P.TOOL.name } : { type: 'auto' } };
   for (let attempt = 0; attempt < 3; attempt++) {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -96,10 +97,16 @@ const usage = { in: 0, out: 0 };
   const photos = path.join(ROOT, 'eval/photos');
   const photoTruth = fs.existsSync(path.join(photos, 'truth.json')) ? JSON.parse(fs.readFileSync(path.join(photos, 'truth.json'), 'utf8')) : {};
   for (const [file, truth] of Object.entries(photoTruth)) cases.push({ kind: 'photo', file, truth });
+  // eval/private/: your own photos, not in the repo; truth.json optional (without it: listing only)
+  const priv = path.join(ROOT, 'eval/private');
+  if (args.includes('--private') && fs.existsSync(priv)) {
+    const pt = fs.existsSync(path.join(priv, 'truth.json')) ? JSON.parse(fs.readFileSync(path.join(priv, 'truth.json'), 'utf8')) : {};
+    for (const f of fs.readdirSync(priv).filter((x) => /\.(jpe?g|png)$/i.test(x)).sort()) cases.push({ kind: 'private', file: f, dir: priv, truth: pt[f] || [] });
+  }
 
   const results = [];
   for (const c of cases) {
-    const img = c.file ? 'data:image/jpeg;base64,' + fs.readFileSync(path.join(photos, c.file)).toString('base64') : null;
+    const img = c.file ? 'data:image/jpeg;base64,' + fs.readFileSync(path.join(c.dir || photos, c.file)).toString('base64') : null;
     const r = await page.evaluate(async ({ c, img, engine }) => {
       let im, truth;
       if (img) {
@@ -126,6 +133,10 @@ const usage = { in: 0, out: 0 };
       return { truth, pred: rows, tiles: out.tiles, hidden: out.hidden };
     }, { c, img, engine: ENGINE });
     const s = score(r.truth, r.pred);
+    if (args.includes('--debug')) {
+      fs.mkdirSync(path.join(ROOT, 'dist/eval-debug'), { recursive: true });
+      fs.writeFileSync(path.join(ROOT, 'dist/eval-debug', (c.file || c.kind + '-' + c.seed) + '.json'), JSON.stringify({ truth: r.truth, pred: r.pred }, null, 1));
+    }
     results.push(Object.assign({ name: c.file || `${c.kind}-${c.seed}`, kind: c.kind, tiles: r.tiles || 1, hidden: r.hidden || 0 }, s));
     console.log(`${(c.file || c.kind + '-' + c.seed).padEnd(14)} truth ${String(s.truth).padStart(3)}  found ${String(s.found).padStart(3)}  count ${(s.countErr * 100).toFixed(0).padStart(4)}%  part+colour ${(s.exact * 100).toFixed(0).padStart(3)}%  colour ${(s.colour * 100).toFixed(0).padStart(3)}%  shape ${(s.shape * 100).toFixed(0).padStart(3)}%`);
   }

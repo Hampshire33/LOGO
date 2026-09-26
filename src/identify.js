@@ -19,16 +19,25 @@
   const P = root.PILEBUILD_PROMPT;
   const ID = (LEGO.identify = {});
 
-  ID.TILE = 1000; // source pixels per tile side, roughly
+  ID.TILE = 700; // source pixels per tile side, roughly
   ID.MAX_GRID = 3;
   ID.OVERLAP = 0.14; // of a tile, on each inner edge
   ID.SEND = 1400; // long side of each image sent
 
   // Grid for a photo: enough tiles that each is about ID.TILE source pixels, at most 3 x 3.
-  ID.grid = function grid(W, H, density) {
+  ID.grid = function grid(W, H, density, want) {
     const extra = density === 'lots' ? 1 : 0;
-    const cols = Math.max(1, Math.min(ID.MAX_GRID, Math.round(W / ID.TILE) + extra));
-    const rows = Math.max(1, Math.min(ID.MAX_GRID, Math.round(H / ID.TILE) + extra));
+    let cols, rows;
+    if (want) {
+      // about `want` tiles, shaped like the photo
+      cols = Math.max(1, Math.round(Math.sqrt((want * W) / H)));
+      rows = Math.max(1, Math.round(want / cols));
+    } else {
+      cols = Math.round(W / ID.TILE) + extra;
+      rows = Math.round(H / ID.TILE) + extra;
+    }
+    cols = Math.max(1, Math.min(ID.MAX_GRID, cols));
+    rows = Math.max(1, Math.min(ID.MAX_GRID, rows));
     // never cut below ~350 px of source per tile: that only makes blurry fragments
     const c = Math.max(1, Math.min(cols, Math.floor(W / 350)));
     const r = Math.max(1, Math.min(rows, Math.floor(H / 350)));
@@ -36,8 +45,8 @@
   };
 
   // Tiles with their counting zone (core) and the wider area shown (view), in source pixels.
-  ID.plan = function plan(W, H, density) {
-    const g = ID.grid(W, H, density);
+  ID.plan = function plan(W, H, density, want) {
+    const g = ID.grid(W, H, density, want);
     const tiles = [];
     const cw = W / g.cols;
     const ch = H / g.rows;
@@ -85,11 +94,32 @@
   const toBlob = (cv) => new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.9));
 
   // Run every tile through `callTile` (3 at a time) and merge the answers.
+  // Adaptive reading. Measured on the test bench: tiles help big dense piles (count error 67% ->
+  // 52%) but hurt ordinary ones (pieces on tile borders) and cost ~3x. So Claude reads the whole
+  // photo first; only when it finds a big pile is the photo re-read in tiles of ~30 pieces each.
+  ID.BIG = 60; // pieces (found + hidden) above which a photo is re-read in tiles
+  ID.PER_TILE = 30;
+
   ID.run = async function run(img, callTile, opt) {
     const o = opt || {};
     const W = img.naturalWidth || img.width;
     const H = img.naturalHeight || img.height;
-    const p = ID.plan(W, H, o.density);
+    if (o.adaptive === false) return ID.runPlan(img, callTile, o, ID.plan(W, H, o.density));
+    const first = await ID.runPlan(img, callTile, Object.assign({}, o, { onProgress: null }), ID.plan(W, H, '', 1));
+    const est = first.rows.reduce((t, r) => t + r.qty, 0) + first.hidden;
+    // Tile when the pile fills the frame (no floor showing) or is very large; a big heap with
+    // floor around it reads better whole (measured: tiling a 68-piece heap raised the error).
+    const busy = o.busy != null ? o.busy : !!(LEGO.detect && LEGO.detect.census && LEGO.detect.census(img).fullFrame);
+    const big = est > 150 || (busy && est > ID.BIG);
+    const want = Math.ceil((est * (o.density === 'lots' ? 2 : 1.5)) / ID.PER_TILE);
+    const p = ID.plan(W, H, '', want);
+    if (!big || p.tiles.length < 2) return Object.assign(first, { passes: 1, estimate: est, busy });
+    if (o.onBig) o.onBig(est, p.tiles.length);
+    const second = await ID.runPlan(img, callTile, o, p);
+    return Object.assign(second, { passes: 2, estimate: est, firstPass: first });
+  };
+
+  ID.runPlan = async function runPlan(img, callTile, o, p) {
     const n = p.tiles.length;
     const answers = new Array(n);
     const errors = [];
@@ -125,17 +155,38 @@
       if (a.notes) notes.push(a.notes);
       for (const p of a.pieces) {
         const color = colorKey(p.color);
-        const k = (p.part_num || p.name) + '|' + color;
+        const part = ID.partFor(p);
+        const k = (part.id || part.name) + '|' + color;
         const cur = m.get(k);
         if (cur) {
           cur.qty += p.count;
           if (rank[p.confidence] < rank[cur.conf]) cur.conf = p.confidence;
         } else {
-          m.set(k, { id: p.part_num, name: p.name, color, colorName: p.color, qty: p.count, conf: p.confidence, category: p.category });
+          m.set(k, { id: part.id, name: part.name, color, colorName: p.color, qty: p.count, conf: p.confidence, category: p.category, shape: p.shape });
         }
       }
     }
     return { rows: [...m.values()], hidden, notes: [...new Set(notes)].slice(0, 4) };
+  };
+
+  // Plain pieces get their part number from what Claude saw (type + studs), not from its memory
+  // of numbers: measured, it often gave brick numbers for plates. Common moulds by size:
+  const PLAIN = {
+    brick: { '1x1': '3005', '1x2': '3004', '1x3': '3622', '1x4': '3010', '1x6': '3009', '1x8': '3008', '1x10': '6111', '1x12': '6112', '2x2': '3003', '2x3': '3002', '2x4': '3001', '2x6': '2456', '2x8': '3007', '2x10': '3006' },
+    plate: { '1x1': '3024', '1x2': '3023', '1x3': '3623', '1x4': '3710', '1x6': '3666', '1x8': '3460', '1x10': '4477', '1x12': '60479', '2x2': '3022', '2x3': '3021', '2x4': '3020', '2x6': '3795', '2x8': '3034', '2x10': '3832', '2x12': '2445', '4x4': '3031', '4x6': '3032', '4x8': '3035', '6x6': '3958', '6x8': '3036' },
+    tile: { '1x1': '3070b', '1x2': '3069b', '1x3': '63864', '1x4': '2431', '1x6': '6636', '1x8': '4162', '2x2': '3068b', '2x4': '87079', '2x6': '69729' },
+    round_plate: { '1x1': '4073', '2x2': '4032' },
+    round_brick: { '1x1': '3062b', '2x2': '3941' },
+    round_tile: { '1x1': '98138', '2x2': '14769' },
+  };
+  const NAME = { brick: 'Brick', plate: 'Plate', tile: 'Tile', round_plate: 'Plate Round', round_brick: 'Brick Round', round_tile: 'Tile Round' };
+  ID.partFor = function partFor(p) {
+    const table = PLAIN[p.shape];
+    if (!table || !p.studs_w || !p.studs_l) return { id: p.part_num, name: p.name };
+    const size = p.studs_w + 'x' + p.studs_l;
+    const name = `${NAME[p.shape]} ${p.studs_w} x ${p.studs_l}`;
+    const id = table[size] || (LEGO.catalog && LEGO.catalog.byName && LEGO.catalog.byName(name)) || p.part_num;
+    return { id, name };
   };
 
   function colorKey(name) {
