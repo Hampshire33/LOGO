@@ -60,6 +60,8 @@ Or open `mosaic.html`, drop in a photo and tune the same settings in the browser
 
 ## PileBuild: from a photo of loose bricks to a build
 
+**Live:** [hampshire33.github.io/LOGO](https://hampshire33.github.io/LOGO/) · [instruction player](https://hampshire33.github.io/LOGO/player.html) · [photo mosaic](https://hampshire33.github.io/LOGO/mosaic.html)
+
 Open `app.html`. Photograph your loose bricks and PileBuild:
 
 1. **Finds each piece** in the photo (`src/detect.js`, no network needed; spread pieces so none touch).
