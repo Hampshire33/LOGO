@@ -15,7 +15,7 @@
  *   LEGO.draw(ctx, [{ part }], cam);
  *
  * An item passed to draw() can also carry move [dx, dy, dz] (world units, for animation),
- * pale 0..1 (earlier steps), halo 0..1 (yellow outline) and alpha 0..1.
+ * pale 0..1 (earlier steps), halo 0..1 (outline, yellow unless haloColor is given) and alpha 0..1.
  */
 (function (root) {
   'use strict';
@@ -539,7 +539,7 @@
       const off = [p.off[0] + mv[0], p.off[1] + mv[1], p.off[2] + mv[2]];
       const pale = it.pale || 0;
       const o = {
-        type: 'body', part: p, off, rgb: p.rgb, pale, halo: it.halo || 0, base: it.base ? 0 : 1,
+        type: 'body', part: p, off, rgb: p.rgb, pale, halo: it.halo || 0, haloColor: it.haloColor, base: it.base ? 0 : 1,
         alpha: it.alpha == null ? 1 : it.alpha, edge: edgeTone(p.rgb, pale),
       };
       const mn = [Infinity, Infinity, Infinity];
@@ -596,7 +596,7 @@
         cylBox(C, ax, STUD_R, STUD_H, mn, mx);
         const cyl = cylGeom(cam, C, ax, STUD_R, STUD_H);
         objs.push({
-          type: 'stud', owner: b, rgb: b.rgb, pale: b.pale, halo: b.halo, alpha: b.alpha, edge: b.edge, base: 1,
+          type: 'stud', owner: b, rgb: b.rgb, pale: b.pale, halo: b.halo, haloColor: b.haloColor, alpha: b.alpha, edge: b.edge, base: 1,
           cyl, min: mn, max: mx, rect: rectOf(cyl.sil, pad), depth: depthOf(mn, mx, cam), prints: [],
         });
       }
@@ -692,7 +692,7 @@
     ctx.beginPath();
     ptsPath(ctx, o.type === 'stud' ? o.cyl.sil : o.hull);
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = HALO;
+    ctx.strokeStyle = (o.type === 'stud' ? o.owner.haloColor : o.haloColor) || HALO;
     ctx.lineWidth = lw * 4.6;
     ctx.stroke();
     ctx.restore();

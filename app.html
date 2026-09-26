@@ -190,6 +190,11 @@
   .ptext { font: 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .prog.done .ptext { color: var(--ink); font-weight: 600; }
   @media (prefers-reduced-motion: reduce) { .pbar i { transition: none; } }
+  .finished-bar { gap: 8px 16px; }
+  .stage canvas.turnable { cursor: grab; touch-action: none; }
+  .stage canvas.turnable:active { cursor: grabbing; }
+  .needs tbody tr[data-key] { cursor: pointer; }
+  .needs tbody tr[data-key]:hover, .needs tbody tr[data-key].on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   .partsbox summary { cursor: pointer; font-size: 14px; color: var(--link); padding-block: 4px; }
   .partsbox[open] summary { margin-bottom: 10px; }
   .partsbox { display: grid; gap: 12px; }
@@ -326,6 +331,11 @@
             <button id="step-prev" class="icon-btn" aria-label="Previous step">◀ Step</button>
             <span class="lbl" id="step-lbl">Step 1 of 1</span>
             <button id="step-next" class="icon-btn" aria-label="Next step">Step ▶</button>
+          </div>
+          <div class="row finished-bar" id="finished-bar" hidden>
+            <button id="replay" class="primary">↻ Replay the build</button>
+            <label class="toggle small"><input type="checkbox" id="show-missing"> Show parts to get</label>
+            <span class="small muted" id="finished-hint">Drag the model to turn it. Point at a part below to find it in the model.</span>
           </div>
           <div class="row">
             <label class="toggle"><input type="checkbox" id="landscape"> Landscape</label>
@@ -930,7 +940,8 @@
 
   // ---------------------------------------------------------------- player
 
-  const film = { view: null, t: 0, playing: true, last: null };
+  // mode 'film': the booklet animation; 'final': the finished model, turnable, with highlights
+  const film = { view: null, t: 0, playing: true, last: null, mode: 'film', theta: 35, spin: 0, hover: null, pinned: null, parts: null, missing: null };
   const fc = $('film');
   const fctx = fc.getContext('2d');
 
@@ -1063,6 +1074,14 @@
     });
   }
 
+  // Point at a part in the list: its pieces blink in the finished model.
+  function highlight(key, pin) {
+    if (pin) film.pinned = key;
+    else film.hover = key;
+    if ((key || film.pinned) && film.mode !== 'final') showFinal();
+    document.querySelectorAll('#needs tr[data-key]').forEach((tr) => tr.classList.toggle('on', tr.dataset.key === (film.hover || film.pinned)));
+  }
+
   // What the chosen model needs, against what you have.
   function renderNeeds(model) {
     const cov = INV.coverage(state.inv, model);
@@ -1080,10 +1099,19 @@
       '<div class="tablewrap"><table><thead><tr><th>Part</th><th>Colour</th><th class="n">Need</th><th class="n">Have</th></tr></thead><tbody>' +
       need.map((n, i) => {
         const h = have.get(n.id + '|' + n.color) || 0;
-        return `<tr class="${h < n.qty ? 'short' : ''}"${i >= SHOW ? ' data-more hidden' : ''}><td><span class="pno">${n.id}</span> ${esc(LEGO.LIB[n.id].label)}</td>` +
+        return `<tr class="${h < n.qty ? 'short' : ''}" data-key="${esc(n.id + '|' + n.color)}" tabindex="0"${i >= SHOW ? ' data-more hidden' : ''}><td><span class="pno">${n.id}</span> ${esc(LEGO.LIB[n.id].label)}</td>` +
           `<td>${swatch(n.color)} ${esc(colorName(n.color))}</td><td class="n">${n.qty}</td><td class="n">${Math.min(h, 999)}</td></tr>`;
       }).join('') + '</tbody></table></div>' +
       (need.length > SHOW ? `<button class="link" id="needs-more">Show all ${need.length} kinds of part</button>` : '');
+    const rows = document.querySelectorAll('#needs tr[data-key]');
+    rows.forEach((tr) => {
+      tr.addEventListener('mouseenter', () => highlight(tr.dataset.key, false));
+      tr.addEventListener('mouseleave', () => highlight(null, false));
+      tr.addEventListener('focus', () => highlight(tr.dataset.key, false));
+      tr.addEventListener('blur', () => highlight(null, false));
+      // tap / click pins the highlight (phones have no hover)
+      tr.addEventListener('click', () => highlight(film.pinned === tr.dataset.key ? null : tr.dataset.key, true));
+    });
     const more = $('needs-more');
     if (more) more.addEventListener('click', () => {
       document.querySelectorAll('#needs [data-more]').forEach((tr) => (tr.hidden = false));
@@ -1099,6 +1127,11 @@
     if (!keepTime || film.t > film.view.duration) film.t = 0;
     film.last = null;
     $('scrub').max = String(film.view.duration);
+    prepareFinal(state.choice.model);
+    if (!keepTime) {
+      toFilm();
+      setPlaying(true);
+    }
   }
   $('landscape').addEventListener('change', () => loadFilm(true));
 
@@ -1110,6 +1143,7 @@
   function goStep(k) {
     const n = stepCount();
     k = Math.max(0, Math.min(n - 1, k));
+    toFilm();
     film.t = T0 + (k + 1) * stepLen() - 0.02; // the step's parts have landed
     setPlaying(false);
   }
@@ -1117,12 +1151,18 @@
   $('step-next').addEventListener('click', () => goStep(film.t < T0 ? 0 : stepAt(film.t) + 1));
   function tick(now) {
     if (film.view) {
-      if (film.playing) {
+      if (film.playing && film.mode === 'film') {
         if (film.last != null) film.t += (now - film.last) / 1000;
-        if (film.t > film.view.duration) film.t = 0;
+        // play once: at the end, stop on the finished model
+        if (film.t >= film.view.duration) {
+          film.t = film.view.duration;
+          setPlaying(false);
+          showFinal();
+        }
       }
       film.last = now;
-      film.view.draw(fctx, film.t);
+      if (film.mode === 'final') drawFinal(now);
+      else film.view.draw(fctx, film.t);
       $('scrub').value = String(film.t);
       $('time').textContent = `${film.t.toFixed(1)} / ${film.view.duration.toFixed(1)} s`;
       const built = film.t >= T0 + stepCount() * stepLen();
@@ -1136,12 +1176,127 @@
     $('play').textContent = p ? '❚❚' : '▶';
     $('play').setAttribute('aria-label', p ? 'Pause' : 'Play');
   }
-  $('play').addEventListener('click', () => setPlaying(!film.playing));
-  fc.addEventListener('click', () => setPlaying(!film.playing));
+  $('play').addEventListener('click', () => {
+    if (film.mode === 'final' || film.t >= film.view.duration) return replay();
+    setPlaying(!film.playing);
+  });
+  fc.addEventListener('click', () => {
+    if (film.mode === 'film') setPlaying(!film.playing);
+  });
   $('scrub').addEventListener('input', (e) => {
+    toFilm();
     film.t = Number(e.target.value);
     setPlaying(false);
   });
+  $('replay').addEventListener('click', replay);
+  $('show-missing').addEventListener('change', () => {
+    if (film.mode !== 'final') showFinal();
+  });
+
+  function replay() {
+    toFilm();
+    film.t = 0;
+    setPlaying(true);
+  }
+  function toFilm() {
+    film.mode = 'film';
+    fc.classList.remove('turnable');
+    $('finished-bar').hidden = true;
+  }
+  function showFinal() {
+    film.mode = 'final';
+    setPlaying(false);
+    fc.classList.add('turnable');
+    $('finished-bar').hidden = false;
+    $('play').textContent = '↻';
+    $('play').setAttribute('aria-label', 'Replay');
+  }
+
+  // ---------------------------------------------------------------- finished view
+
+  // Placed parts, and which of them the builder still has to get: for each part + colour the
+  // model needs more of than they own, the last ones in building order are the missing ones.
+  function prepareFinal(model) {
+    const specs = model.steps.flat();
+    // each part also in a bright yellow (you have it) and red (to get) version, for blinking
+    film.parts = specs.map((sp) => ({
+      part: LEGO.place(sp),
+      hot: LEGO.place(Object.assign({}, sp, { rgb: [255, 206, 26] })),
+      hotMiss: LEGO.place(Object.assign({}, sp, { rgb: [226, 38, 44] })),
+      key: sp.id + '|' + sp.color,
+    }));
+    const have = new Map(state.inv.map((r) => [r.id + '|' + r.color, r.qty]));
+    const used = new Map();
+    film.missing = new Set();
+    film.parts.forEach((p, i) => {
+      const n = (used.get(p.key) || 0) + 1;
+      used.set(p.key, n);
+      if (n > (have.get(p.key) || 0)) film.missing.add(i);
+    });
+    film.theta = model.theta || 35;
+    film.phi = model.phi || 28;
+    film.bounds = LEGO.bounds(film.parts.map((p) => p.part));
+    film.hover = film.pinned = null;
+  }
+
+  function drawFinal(now) {
+    const W = fc.width, H = fc.height;
+    const ctx = fctx;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, W, H);
+    const land = W > H;
+    // title
+    ctx.fillStyle = '#1F2328';
+    ctx.font = `700 ${land ? 64 : 80}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+    ctx.fillText(state.choice.model.title || 'Your model', land ? 72 : 58, land ? 110 : 150);
+    const key = film.hover || film.pinned;
+    const showMissing = $('show-missing').checked;
+    ctx.font = `400 ${land ? 30 : 36}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+    ctx.fillStyle = '#5B6570';
+    const sub = key
+      ? (() => {
+          const [id, color] = key.split('|');
+          const n = film.parts.filter((p) => p.key === key).length;
+          const miss = film.parts.filter((p, i) => p.key === key && film.missing.has(i)).length;
+          return `${n} × ${id} ${LEGO.LIB[id] ? LEGO.LIB[id].label : ''}, ${LEGO.COLORS[color] ? LEGO.COLORS[color].name : color}` + (miss ? ` · ${miss} to get` : ' · you have them');
+        })()
+      : showMissing
+        ? `${film.missing.size} piece${film.missing.size === 1 ? '' : 's'} to get, blinking red`
+        : `${film.parts.length} parts · drag to turn`;
+    ctx.fillText(sub, land ? 72 : 58, land ? 160 : 210);
+    // model, fitted to the free area
+    const area = land ? { x0: 80, x1: W - 80, y0: 200, y1: H - 60 } : { x0: 60, x1: W - 60, y0: 280, y1: H - 120 };
+    const theta = film.theta + film.spin;
+    const e = LEGO.extent(film.bounds, theta, film.phi);
+    const scale = Math.min((area.x1 - area.x0) / e.w, (area.y1 - area.y0) / e.h, 120) * 0.92;
+    const cam = LEGO.camera({ theta, phi: film.phi, scale, cx: (area.x0 + area.x1) / 2, cy: (area.y0 + area.y1) / 2, target: film.bounds.center });
+    // blink: about 2.5 times a second
+    const on = Math.floor(now / 200) % 2 === 0;
+    // highlighted pieces blink between their own colour and bright yellow (you have them) or
+    // red (to get), with an outline; everything else fades back
+    const items = film.parts.map((p, i) => {
+      const miss = film.missing.has(i);
+      const lit = key ? p.key === key : showMissing && miss;
+      if (lit) return { part: on ? (miss ? p.hotMiss : p.hot) : p.part, halo: 1, haloColor: miss ? '#E0282E' : '#FFB800' };
+      return { part: p.part, pale: key || showMissing ? 0.75 : 0 };
+    });
+    LEGO.draw(ctx, items, cam, { lineWidth: Math.max(1, scale * 0.02) });
+  }
+
+  // drag to turn (mouse and touch)
+  let drag = null;
+  fc.addEventListener('pointerdown', (e) => {
+    if (film.mode !== 'final') return;
+    drag = { x: e.clientX, spin: film.spin };
+    fc.setPointerCapture(e.pointerId);
+  });
+  fc.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const r = fc.getBoundingClientRect();
+    film.spin = drag.spin + ((e.clientX - drag.x) / r.width) * 360;
+  });
+  fc.addEventListener('pointerup', () => (drag = null));
+  fc.addEventListener('pointercancel', () => (drag = null));
 
   $('copy-json').addEventListener('click', async () => {
     if (!state.choice) return;
