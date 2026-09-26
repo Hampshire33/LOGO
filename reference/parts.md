@@ -87,3 +87,27 @@ Check in the catalogue that the part is made in the colour you want, see modelin
 | `brown` | Reddish Brown | #6A3A1F |
 | `azure` | Medium Azure | #35AFC2 |
 | `lime` | Lime | #B4DA1F |
+| `darkRed` | Dark Red | #720E0F |
+| `darkBlue` | Dark Blue | #0A3463 |
+| `darkGreen` | Dark Green | #184632 |
+| `brightGreen` | Bright Green | #4B9F4A |
+| `mediumBlue` | Medium Blue | #5A93DB |
+| `darkAzure` | Dark Azure | #078BC9 |
+| `brightLightBlue` | Bright Light Blue | #9FC3E9 |
+| `sandBlue` | Sand Blue | #6074A1 |
+| `darkTurquoise` | Dark Turquoise | #008F9B |
+| `sandGreen` | Sand Green | #A0BCAC |
+| `oliveGreen` | Olive Green | #9B9A5A |
+| `yellowishGreen` | Yellowish Green | #DFEEA5 |
+| `brightLightYellow` | Bright Light Yellow | #FFF03A |
+| `darkTan` | Dark Tan | #958A73 |
+| `lightNougat` | Light Nougat | #F6D7B3 |
+| `nougat` | Nougat | #D09168 |
+| `mediumNougat` | Medium Nougat | #AA7D55 |
+| `darkBrown` | Dark Brown | #352100 |
+| `coral` | Coral | #FF698F |
+| `magenta` | Magenta | #923978 |
+| `mediumLavender` | Medium Lavender | #AC78BA |
+| `lavender` | Lavender | #E1D5ED |
+| `darkPurple` | Dark Purple | #3F3691 |
+| `darkPink` | Dark Pink | #C870A0 |
