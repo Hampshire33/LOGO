@@ -160,6 +160,16 @@ const usage = { in: 0, out: 0 };
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, lines.join('\n') + '\n');
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+  // one annotation per scene kind, readable on the run page and through the API
+  if (process.env.GITHUB_ACTIONS) {
+    for (const [k, rows] of Object.entries(byKind)) {
+      console.log(`::notice title=${ENGINE}${ENGINE === 'claude' ? ' ' + MODEL + ' v' + P.VERSION : ''} ${k}::count error ${pct(rows.reduce((t, r) => t + Math.abs(r.countErr), 0) / rows.length)}, part+colour ${ENGINE === 'offline' ? 'n/a' : pct(avg(rows, 'exact'))}, colour ${pct(avg(rows, 'colour'))}, part ${ENGINE === 'offline' ? 'n/a' : pct(avg(rows, 'shape'))} (${rows.length} photos)`);
+    }
+    if (ENGINE === 'claude') {
+      const pr = { 'claude-sonnet-5': [2, 10], 'claude-opus-5-5': [4, 20] }[MODEL] || [4, 20];
+      console.log(`::notice title=cost::${usage.in} tokens in, ${usage.out} out, about $${((usage.in * pr[0] + usage.out * pr[1]) / 1e6).toFixed(2)}`);
+    }
+  }
   console.log('\n' + lines.join('\n'));
 })().catch((e) => {
   console.error(e);

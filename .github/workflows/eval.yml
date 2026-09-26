@@ -7,6 +7,10 @@ name: Evaluate identification
 # kind = 12 photos) a run costs roughly 20-50 US cents; with claude-opus-5-5 about twice that.
 
 on:
+  # also runs when eval/request.json changes: {"model": "...", "per_kind": 2}
+  push:
+    branches: [main]
+    paths: ['eval/request.json']
   workflow_dispatch:
     inputs:
       model:
@@ -35,14 +39,24 @@ jobs:
         run: |
           mkdir -p dist
           git fetch -q origin catalog-data && git show origin/catalog-data:catalog.json > dist/catalog.json || echo "no catalogue yet"
+      - name: Settings
+        id: cfg
+        run: |
+          model="${{ inputs.model }}"; per="${{ inputs.per_kind }}"
+          if [ -z "$model" ] && [ -f eval/request.json ]; then
+            model=$(node -p "require('./eval/request.json').model || 'claude-sonnet-5'")
+            per=$(node -p "require('./eval/request.json').per_kind || 2")
+          fi
+          echo "model=${model:-claude-sonnet-5}" >> "$GITHUB_OUTPUT"
+          echo "per=${per:-2}" >> "$GITHUB_OUTPUT"
       - name: Offline detector (baseline)
-        run: node tools/eval/run.cjs --engine offline --per-kind ${{ inputs.per_kind }} --out dist/eval-offline.md
+        run: node tools/eval/run.cjs --engine offline --per-kind ${{ steps.cfg.outputs.per }} --out dist/eval-offline.md
       - name: Claude reader
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ -z "$ANTHROPIC_API_KEY" ]; then echo "::notice::Add the ANTHROPIC_API_KEY secret to score the Claude reader."; exit 0; fi
-          node tools/eval/run.cjs --engine claude --model "${{ inputs.model }}" --per-kind ${{ inputs.per_kind }} --out dist/eval-claude.md
+          node tools/eval/run.cjs --engine claude --model "${{ steps.cfg.outputs.model }}" --per-kind ${{ steps.cfg.outputs.per }} --out dist/eval-claude.md
       - uses: actions/upload-artifact@v4
         with:
           name: eval-report
