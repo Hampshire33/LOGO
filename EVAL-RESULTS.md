@@ -33,13 +33,22 @@ Counting is the limit: a 415 px photo of a ~1,500-piece heap gave 57 pieces, and
 full-frame pile gave an implausibly high 860. Small web images of big piles cannot be
 counted piece by piece; sharp phone photos are read in tiles and count far better.
 
-## Prompt v6: compact answers (not yet measured)
+## Prompt v6: compact answers (measured, current default)
 
-Same rules as v5; the answer uses one-letter keys and drops the name and category fields the
-page derives itself. On a 28-kind answer that is 59% fewer characters, and output tokens are
-most of the cost. Sonnet 5 is the default again, with Opus 5.5 as an opt-in "precise read".
-Measuring v6 needs about $0.50 of credit (Sonnet, 2 photos per kind): run it before trusting
-the accuracy numbers above for v6.
+Same rules as v5; the answer uses one-letter keys and drops fields the page derives (59% fewer
+characters on a 28-kind answer). Sonnet 5, one read per photo (tiling only when "Lots of small
+pieces" is ticked). Run on GitHub Actions, 8 photos, $0.20 total.
+
+| Sonnet 5 | Spread | Heap | Carpet | Dense |
+|---|---|---|---|---|
+| v5, adaptive tiling: count error / part+colour | 7% / 47% | 25% / 18% | 10% / 34% | 52% / 33% |
+| **v6, single read**: count error / part+colour | **4% / 46%** | **20% / 24%** | **13% / 37%** | 72% / 25% |
+| v6 colour only / part only | 77% / 67% | 61% / 55% | 71% / 57% | 42% / 40% |
+
+Cost per photo: about 7 US cents (v5) -> about 2.5 cents (v6). Accuracy held on spread, heap
+and carpet (differences within run-to-run noise); dense piles are worse without tiling, which
+is now opt-in. Opus 5.5 ("precise read") was about twice as accurate with v5; not yet re-run
+with v6.
 
 ## What to try next
 
