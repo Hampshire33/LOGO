@@ -182,6 +182,8 @@
   .needs .sum { font-size: 14px; }
   .needs .sum b { font-weight: 600; }
   .tctl { display: grid; gap: 8px; }
+  .aidesign { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+  .aidesign input[type=text] { width: 100%; }
   .kinds { gap: 6px; }
   .kinds button { min-height: 34px; padding: 6px 12px; border-radius: 999px; }
   .kinds button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
@@ -316,6 +318,18 @@
         </div>
 
         <div class="sugs">
+          <div class="aidesign" id="aidesign" hidden>
+            <h3>Design with AI</h3>
+            <p class="small muted">Claude designs a real LEGO model of your “What to build” photo, or of what you type here, from your parts first. Takes about half a minute to two minutes.</p>
+            <input type="text" id="want" maxlength="120" placeholder="e.g. a red fire truck, a sitting cat, my house" aria-label="What to build">
+            <div class="row">
+              <button id="ai-design" class="primary">Design it</button>
+              <label class="toggle small"><input type="checkbox" id="design-mine"> Only my parts</label>
+              <span class="small muted">about 5-20 US cents</span>
+            </div>
+            <p class="status" id="design-status"></p>
+            <div id="design-slot"></div>
+          </div>
           <h3>From your parts</h3>
           <div id="pic-slot"></div>
           <div id="gen-slot"></div>
@@ -354,6 +368,7 @@
 <script src="src/fit.js"></script>
 <script src="src/identify-prompt.js"></script>
 <script src="src/identify.js"></script>
+<script src="src/design-core.js"></script>
 <script src="src/models/cat.js"></script>
 <script src="src/models/microduck.js"></script>
 <!-- @inline-end -->
@@ -477,7 +492,7 @@
       server_key: 'The AI server key was refused. The site owner needs to check it.',
       forbidden_origin: 'This copy of the page is not allowed to use the AI server.',
     };
-    return copy[e && e.code] || (e && e.message ? 'The AI reader failed: ' + e.message : 'The AI reader failed. Try again.');
+    return copy[e && e.code] || (e && e.message ? 'The AI server failed: ' + e.message : 'The AI server failed. Try again.');
   }
 
   // ---------------------------------------------------------------- real-LEGO check
@@ -1093,6 +1108,76 @@
     loadFilm(keepTime);
   }
 
+  // ---------------------------------------------------------------- design with AI (site server)
+
+  let aiDesigns = [];
+  $('ai-design').addEventListener('click', async () => {
+    const want = $('want').value.trim();
+    if (!want && !state.target) {
+      setStatus($('design-status'), 'Add a “What to build” photo, or type what you want.', true);
+      $('want').focus();
+      return;
+    }
+    const btn = $('ai-design');
+    btn.disabled = true;
+    const t0 = Date.now();
+    const meter = LEGO.identify.meter();
+    try {
+      const image = state.target ? await blobToB64(await toBlob(state.target.img, 1000)) : null;
+      const inventory = state.inv.filter(INV.usable).map((r) => ({ id: r.id, color: r.color, qty: r.qty }));
+      const r = await LEGO.designAI.viaServer(async (body) => {
+        const res = await fetch(CFG.aiEndpoint.replace(/\/$/, '') + '/v1/design', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw Object.assign(new Error(j.error || 'HTTP ' + res.status), { code: j.code, status: res.status });
+        meter.add(j.usage, j.model);
+        return j;
+      }, {
+        image, want, inventory, onlyMine: $('design-mine').checked,
+        onRound: (n) => setStatus($('design-status'), n === 1 ? 'Claude is designing your model…' : 'Claude is fixing a few parts the check found…'),
+      });
+      r.model = LEGO.realColors(r.model).model;
+      const cov = INV.coverage(state.inv, r.model);
+      const miss = cov.missing.reduce((t, m) => t + m.qty, 0);
+      aiDesigns.unshift({ model: r.model, check: r.check, cost: meter.usd, miss, total: cov.total });
+      aiDesigns = aiDesigns.slice(0, 4);
+      renderAiDesigns();
+      choose('ai0', r.model);
+      setStatus($('design-status'),
+        `“${r.model.title}”: ${cov.total} parts in ${r.model.steps.length} steps, ` +
+        (r.check.ok ? 'checked: nothing overlaps or floats. ' : `${r.check.problems.length} problems left (listed under the player). `) +
+        (miss ? `${cov.total - miss} from your pile, ${miss} to get. ` : 'all from your pile. ') +
+        `Took ${Math.round((Date.now() - t0) / 1000)} s and cost about ${costText(meter.usd)}.`);
+    } catch (e) {
+      setStatus($('design-status'), (e && e.message === 'no model came back') ? 'No model came back. Try again, or describe it differently.' : serverError(e), true);
+    }
+    btn.disabled = false;
+  });
+
+  function renderAiDesigns() {
+    const box = $('design-slot');
+    box.innerHTML = '';
+    aiDesigns.forEach((d, i) => {
+      const b = sugButton('ai' + i, d.model.title,
+        `${d.total} parts${d.miss ? `, ${d.miss} to get` : ', all from your pile'} · designed by Claude for about ${costText(d.cost)}`,
+        `<span class="chip ${d.check.ok ? (d.miss ? 'warn' : 'good') : 'bad'}">${d.check.ok ? 'checked' : 'check failed'}</span>`);
+      b.addEventListener('click', () => choose('ai' + i, d.model));
+      box.appendChild(b);
+    });
+  }
+
+  function blobToB64(blob) {
+    return new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result).split(',')[1]);
+      fr.onerror = () => rej(fr.error);
+      fr.readAsDataURL(blob);
+    });
+  }
+
   // What the chosen model needs, against what you have.
   function renderNeeds(model) {
     const cov = INV.coverage(state.inv, model);
@@ -1217,6 +1302,8 @@
     $('ai-block').hidden = !sample;
     $('ai-off').hidden = !!sample;
     $('reader-opts').hidden = !aiReader();
+    $('aidesign').hidden = !CFG.aiEndpoint;
+    if (CFG.aiEndpoint) $('ai-off').hidden = true;
     $('precise-row').hidden = !CFG.aiEndpoint;
     $('reader-note').textContent = aiReader()
       ? (CFG.aiEndpoint ? 'Photos are read by Claude through the PileBuild AI server.' : 'Photos are read by Claude on your claude.ai account.')

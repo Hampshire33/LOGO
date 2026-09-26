@@ -142,6 +142,67 @@
 
   const canForce = (model) => !/opus-5-5|fable|mythos/.test(model || '');
 
+  // Problem lines the checker writes. A fix request may only carry lines of these shapes, so the
+  // server can relay them to Claude without becoming a general-purpose proxy.
+  D.PROBLEM_LINE = /^(OVERLAP|FLOATS|UNKNOWN PART|UNKNOWN COLOUR|BAD POSITION|BAD PART|NOT OWNED)\s[\w\s:,.[\]|+#-]{1,160}$/;
+
+  // One API request: a first design, or a fix of `previous` (the compact tool input) given the
+  // checker's problem lines.
+  D.request = function request(o, previous, problems) {
+    const model = o.model || 'claude-opus-5-5';
+    const messages = [{ role: 'user', content: D.userContent(o) }];
+    if (previous && problems && problems.length) {
+      messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_prev', name: D.TOOL.name, input: previous }] });
+      messages.push({
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'toolu_prev', content: 'The check found these problems. Fix them all and submit the whole model again:\n' + problems.join('\n') }],
+      });
+    }
+    return {
+      model,
+      max_tokens: D.MAX_TOKENS,
+      system: D.system(),
+      messages,
+      tools: [D.TOOL],
+      tool_choice: canForce(model) ? { type: 'tool', name: D.TOOL.name } : { type: 'auto' },
+    };
+  };
+
+  // The tool input from an API response, or null.
+  D.inputOf = function inputOf(res) {
+    const use = ((res && res.content) || []).find((c) => c.type === 'tool_use' && c.name === D.TOOL.name);
+    return use ? use.input : null;
+  };
+
+  // Design in the browser through the site's server: the server makes one Claude call per request,
+  // the page checks the result and asks for one fix. callServer(body) -> { input, usage, model }.
+  D.viaServer = async function viaServer(callServer, o) {
+    const base = { image: o.image || undefined, want: o.want, inventory: o.inventory, onlyMine: !!o.onlyMine };
+    const usage = { input_tokens: 0, output_tokens: 0 };
+    let best = null;
+    let previous = null;
+    let problems = null;
+    let modelName = '';
+    for (let round = 1; round <= D.MAX_ROUNDS; round++) {
+      if (o.onRound) o.onRound(round);
+      const r = await callServer(Object.assign({}, base, previous ? { fix: { previous, problems } } : {}));
+      usage.input_tokens += (r.usage && r.usage.input_tokens) || 0;
+      usage.output_tokens += (r.usage && r.usage.output_tokens) || 0;
+      modelName = r.model || modelName;
+      if (!r.input) break;
+      const m = D.expand(r.input);
+      const check = D.review(m, o.inventory, o.onlyMine);
+      const score = check.problems.length * 3 + (o.onlyMine ? check.missing.length : 0);
+      if (!best || score < best.score) best = { model: m, check, score, round };
+      if (!check.feedback.length) break;
+      previous = r.input;
+      problems = check.feedback.filter((l) => D.PROBLEM_LINE.test(l)).slice(0, 40);
+      if (!problems.length) break;
+    }
+    if (!best) throw Object.assign(new Error('no model came back'), { code: 'bad_answer' });
+    return { model: best.model, check: best.check, rounds: best.round, usage, modelName };
+  };
+
   // The design loop. callApi(payload) returns the Messages API response (throws on errors).
   D.run = async function run(callApi, o) {
     const model = o.model || 'claude-opus-5-5';

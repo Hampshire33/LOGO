@@ -18,8 +18,13 @@ separately from a claude.ai plan. The page shows the cost of every read right af
 - **Lots of small pieces** (tick box): if the first read finds a big pile filling the frame, the
   photo is read again in up to 9 parts: up to about 10x the cost of a normal read.
 
-These are estimates from the compact answer format (prompt v6), which cut the answer size by
-about 60% against v5; v6 has not been re-measured on the bench yet.
+- **Design with AI** (button in "What to build"): Claude Opus 5.5 designs a model from the photo
+  or your words, the page checks it, and Claude fixes what the check finds (one extra round at
+  most). Measured: 6-15 US cents for a design, up to about 25 cents with a fix round. Counts as
+  5 reads against the caps.
+
+Measured on the test bench (EVAL-RESULTS.md): a normal read about 2.5 cents, a precise read
+about 4.5 cents.
 
 Daily caps, counted in reads: 20 per visitor and 200 for the whole site. Change them in
 `worker/wrangler.toml`. With auto-reload off, spending can never exceed the credit you buy.

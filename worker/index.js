@@ -11,7 +11,7 @@
  *
  *   GET  /v1/health          -> { ok, model, prompt }
  *   POST /v1/identify-tile   { image: <base64 jpeg>, n, of, precise } -> { answer, usage, model }
- *   POST /v1/design          { image?, want?, inventory, onlyMine } -> { model, check, rounds, usage }
+ *   POST /v1/design          { image?, want?, inventory, onlyMine, fix? } -> { input, usage, model }
  */
 import '../src/identify-prompt.js';
 import '../src/lego.js';
@@ -116,29 +116,34 @@ export default {
   },
 };
 
-// Claude designs a model from the photo and/or words, checked and fixed once (src/design-core.js).
+// One Claude design call (src/design-core.js). The page checks the result and may send one fix
+// request carrying the previous model and the checker's problem lines (checked against the
+// checker's line format, so no free text reaches Claude). No checking here: CPU stays tiny.
 async function design(env, body, image, model, cors) {
+  const L = globalThis.LEGO;
   const inventory = (Array.isArray(body.inventory) ? body.inventory : []).slice(0, 300).map((r) => ({
     id: String(r && r.id || '').slice(0, 16),
     color: String(r && r.color || '').slice(0, 24),
     qty: Math.max(0, Math.min(999, Math.round(Number(r && r.qty) || 0))),
   })).filter((r) => r.id && r.qty);
-  try {
-    const r = await globalThis.LEGO.designAI.run(async (payload) => {
-      const res = await callClaude(env, payload);
-      if (!res.ok) throw Object.assign(new Error(res.error), { code: res.code, status: res.status });
-      return res.data;
-    }, { image: image || null, want: body.want, inventory, onlyMine: !!body.onlyMine, model });
-    return json({
-      model: r.model,
-      check: { ok: r.check.ok, problems: r.check.problems.slice(0, 20), missing: r.check.missing, parts: r.check.parts, steps: r.check.steps },
-      rounds: r.rounds,
-      usage: r.usage,
-      modelName: r.modelName,
-    }, 200, cors);
-  } catch (e) {
-    return json({ error: e.message || 'Design failed.', code: e.code || 'design_failed' }, e.status || 502, cors);
+  let previous = null;
+  let problems = null;
+  if (body.fix) {
+    const p = body.fix.previous;
+    const lines = Array.isArray(body.fix.problems) ? body.fix.problems.map(String).slice(0, 40) : [];
+    const parts = p && Array.isArray(p.steps) ? p.steps.reduce((t, st) => t + (Array.isArray(st) ? st.length : 0), 0) : 0;
+    if (!p || !parts || parts > 400 || JSON.stringify(p).length > 60000 || !lines.length || !lines.every((l) => L.designAI.PROBLEM_LINE.test(l))) {
+      return json({ error: 'That fix request is not in the expected form.', code: 'bad_request' }, 400, cors);
+    }
+    previous = L.designAI.expand(p) && { title: String(p.title || '').slice(0, 40), steps: p.steps };
+    problems = lines;
   }
+  const payload = L.designAI.request({ image: image || null, want: body.want, inventory, onlyMine: !!body.onlyMine, model }, previous, problems);
+  const r = await callClaude(env, payload);
+  if (!r.ok) return json({ error: r.error, code: r.code }, r.status, cors);
+  const input = L.designAI.inputOf(r.data);
+  if (!input) return json({ error: 'The design did not come back as a model.', code: 'bad_answer' }, 502, cors);
+  return json({ input, usage: r.data.usage || null, model }, 200, cors);
 }
 
 async function callClaude(env, payload) {

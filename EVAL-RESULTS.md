@@ -58,6 +58,23 @@ is now opt-in.
 Opus with v6: $0.36 for 8 photos, about 4.5 cents a photo (v5: about 23 cents). Still about
 twice as accurate as Sonnet on identified parts, for about 2 cents more per photo.
 
+## Designs (Design with AI)
+
+`tools/design-bench.cjs` (Evaluate designs workflow): Claude Opus 5.5 designs each case; the
+result is checked and rendered next to its target, on the design-results branch.
+
+| Batch | Case | Result |
+|---|---|---|
+| 1 (design v1) | car from a photo, pile of 1x2 bricks only | 24 parts, checks pass, but no wheels (told to use owned parts first) |
+| 1 | "a red fire truck", varied pile, only my parts | 69 parts, all owned, checks pass: wheels, lights, ladder deck |
+| 1 | "a cat sitting down", no pile | 44 parts, checks pass: ears, eyes, white chest, tail |
+| 2 (design v2: key features first) | car from a photo, extra parts allowed | 50 parts, checks pass: wheels, cab, windows; 19 owned |
+| 2 | same, only my parts (1x2 bricks) | 24 parts: blocky, as expected without wheel parts |
+| 2 | house from a photo, varied pile | 33 parts, checks pass: door, two windows, sloped roof |
+
+All six passed the physical check first time. Cost 6-15 US cents a design; $0.51 for both
+batches.
+
 ## What to try next
 
 - Two readings of dense tiles with different crops, keeping counts they agree on.
