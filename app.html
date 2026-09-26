@@ -295,6 +295,18 @@
       <!-- 3 build -->
       <section class="panel" aria-labelledby="h-build">
         <div class="head"><span class="num">3</span><h2 id="h-build">What to build</h2></div>
+        <div class="aidesign" id="aidesign" hidden>
+            <h3>Design with AI</h3>
+            <p class="small muted">Claude designs a real LEGO model of your “What to build” photo, or of what you type here, from your parts first. Takes about half a minute to two minutes.</p>
+            <input type="text" id="want" maxlength="120" placeholder="e.g. a red fire truck, a sitting cat, my house" aria-label="What to build">
+            <div class="row">
+              <button id="ai-design" class="primary">Design it</button>
+              <label class="toggle small"><input type="checkbox" id="design-mine"> Only my parts</label>
+              <span class="small muted">about 5-20 US cents</span>
+            </div>
+            <p class="status" id="design-status"></p>
+            <div id="design-slot"></div>
+          </div>
 
         <div class="player">
           <div class="stage"><canvas id="film" width="1080" height="1920" aria-label="Animated building instructions"></canvas></div>
@@ -318,18 +330,6 @@
         </div>
 
         <div class="sugs">
-          <div class="aidesign" id="aidesign" hidden>
-            <h3>Design with AI</h3>
-            <p class="small muted">Claude designs a real LEGO model of your “What to build” photo, or of what you type here, from your parts first. Takes about half a minute to two minutes.</p>
-            <input type="text" id="want" maxlength="120" placeholder="e.g. a red fire truck, a sitting cat, my house" aria-label="What to build">
-            <div class="row">
-              <button id="ai-design" class="primary">Design it</button>
-              <label class="toggle small"><input type="checkbox" id="design-mine"> Only my parts</label>
-              <span class="small muted">about 5-20 US cents</span>
-            </div>
-            <p class="status" id="design-status"></p>
-            <div id="design-slot"></div>
-          </div>
           <h3>From your parts</h3>
           <div id="pic-slot"></div>
           <div id="gen-slot"></div>
