@@ -10,7 +10,8 @@ name: Deploy AI server
 on:
   push:
     branches: [main]
-    paths: ['worker/**', 'src/identify-prompt.js', '.github/workflows/worker.yml']
+    # the server imports these shared files too
+    paths: ['worker/**', 'src/identify-prompt.js', 'src/design-core.js', 'src/lego.js', 'src/check.js', 'src/inventory.js', '.github/workflows/worker.yml']
   workflow_dispatch:
 
 permissions:
