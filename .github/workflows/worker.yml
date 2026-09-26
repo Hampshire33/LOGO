@@ -54,10 +54,16 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: worker
         run: |
-          npx --yes wrangler@4 deploy 2>&1 | tee deploy.log
+          set -o pipefail
+          if ! npx --yes wrangler@4 deploy 2>&1 | tee deploy.log; then
+            # surface Cloudflare's message as an annotation (readable on the run page)
+            echo "::error title=Worker deploy failed::$(grep -iE 'error|✘|failed' deploy.log | head -5 | tr '\n' ' ' | cut -c1-900)"
+            exit 1
+          fi
           url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          version=$(grep -oE 'Current Version ID: [0-9a-f-]+' deploy.log | head -1)
           echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "AI server: $url"
+          echo "::notice title=AI server deployed::$url $version"
       - name: Store the API key as a server secret
         if: steps.keys.outputs.ok == 'true'
         env:
@@ -65,7 +71,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           AK: ${{ secrets.ANTHROPIC_API_KEY }}
         working-directory: worker
-        run: printf '%s' "$AK" | npx --yes wrangler@4 secret put ANTHROPIC_API_KEY
+        run: |
+          set -o pipefail
+          printf '%s' "$AK" | npx --yes wrangler@4 secret put ANTHROPIC_API_KEY 2>&1 | tail -3
       - name: Tell the site where the server is
         if: steps.keys.outputs.ok == 'true' && steps.deploy.outputs.url != ''
         run: |
