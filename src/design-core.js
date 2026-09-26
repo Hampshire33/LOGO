@@ -18,7 +18,7 @@
   const LEGO = root.LEGO;
   const D = (LEGO.designAI = {});
 
-  D.VERSION = 1;
+  D.VERSION = 2;
   D.MAX_ROUNDS = 2; // first design + one fix
   D.MAX_TOKENS = 12000; // per round; a 120-part model in compact form is ~4-6k
 
@@ -41,7 +41,8 @@
       '- First decide what makes the subject recognisable from the front-left view: silhouette, proportions, main colours, 2-4 key features (wheels, windows, roof, face, legs). Build those; skip tiny details.',
       '- Scale: about 6-16 studs long, 40-120 parts. Solid, compact, symmetrical where the subject is.',
       '- Use real techniques: stagger joints like brickwork, plates to tie rows together, slopes for roofs and noses, round plates on side-stud bricks (87087) for wheels and eyes, tiles for smooth tops.',
-      '- Use the builder\'s parts first (listed below with counts). When a part is missing, a part they own in another colour or shorter pieces that add up are better than a new part.',
+      '- The key features must be there: a vehicle has wheels, a house a roof and door, an animal legs, ears and eyes. Never drop a key feature to save parts.',
+      '- When told to use only the builder\'s parts, work within them (another colour or shorter pieces that add up). Otherwise recognisability comes first: use the builder\'s parts for the bulk, and add the parts the key features need; they go on a shopping list.',
       '',
       'HOW MODELS ARE WRITTEN',
       '- Units: x, y in studs; z in plates (a plate is 1 high, a brick 3). Plate 0 lies on the ground. x right, y away from the viewer, z up. The model faces -y, towards the viewer.',
@@ -131,7 +132,7 @@
       want ? `What to build: ${want}.` : '',
       !o.image && !want ? 'Design something fun and recognisable from these parts.' : '',
       inventoryText(o.inventory),
-      o.onlyMine ? 'Use only parts the builder owns, and no more of each part + colour than they have.' : 'Prefer the builder\'s parts; extra parts are allowed where the design needs them.',
+      o.onlyMine ? 'Use only parts the builder owns, and no more of each part + colour than they have.' : 'Use the builder\'s parts for the bulk of the model and add whatever parts the key features need.',
     ].filter(Boolean).join('\n');
     const content = [];
     if (o.image) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: o.image } });

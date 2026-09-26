@@ -132,7 +132,7 @@ async function callApi(payload) {
   }
   await browser.close();
   console.log(`::notice title=design cost::${MODEL}, total $${usd.toFixed(2)}`);
-  fs.writeFileSync(path.join(OUT, 'README.md'), `# Design bench (${MODEL}, design v${1})\n\n| Case | Title | Result |\n|---|---|---|\n${summary.join('\n')}\n\nTotal $${usd.toFixed(2)}\n`);
+  fs.writeFileSync(path.join(OUT, 'README.md'), `# Design bench (${MODEL}, design v${2})\n\n| Case | Title | Result |\n|---|---|---|\n${summary.join('\n')}\n\nTotal $${usd.toFixed(2)}\n`);
 })().catch((e) => {
   console.error(e);
   process.exit(1);
