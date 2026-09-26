@@ -34,7 +34,8 @@ export default {
     const preciseModel = env.PRECISE_MODEL || 'claude-opus-5-5';
 
     if (req.method === 'OPTIONS') return new Response(null, { status: okOrigin ? 204 : 403, headers: cors });
-    if (req.method === 'GET' && url.pathname === '/v1/health') {
+    // /v1/health/<anything> also answers, so a check can bypass caches in front of the server
+    if (req.method === 'GET' && (url.pathname === '/v1/health' || url.pathname.startsWith('/v1/health/'))) {
       return json({ ok: !!env.ANTHROPIC_API_KEY, model: defaultModel, precise: preciseModel, prompt: P.VERSION }, 200, cors);
     }
     if (req.method !== 'POST' || url.pathname !== '/v1/identify-tile') {
