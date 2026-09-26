@@ -9,6 +9,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # rebuild when the AI server is (re)deployed, to pick up its address
+  workflow_run:
+    workflows: ['Deploy AI server']
+    types: [completed]
 
 permissions:
   contents: write
@@ -52,6 +56,14 @@ jobs:
           mkdir -p _site
           cp dist/app.html _site/index.html
           if [ -f dist/catalog.json ]; then cp dist/catalog.json _site/catalog.json; fi
+          # AI server address, if one has been deployed (see SETUP-AI.md)
+          if git fetch -q origin site-config 2>/dev/null; then
+            url=$(git show origin/site-config:ai-endpoint.txt | tr -d '[:space:]')
+            echo "window.PILEBUILD_CONFIG = { aiEndpoint: '$url' };" > _site/config.js
+            echo "AI server: $url"
+          else
+            echo "window.PILEBUILD_CONFIG = {};" > _site/config.js
+          fi
           cp index.html _site/player.html
           cp mosaic.html _site/mosaic.html
           cp -r src _site/src

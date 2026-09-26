@@ -20,6 +20,10 @@
   const byName = new Map(); // normalised colour name -> Rebrickable colour id
   const keyOfRb = new Map(); // Rebrickable colour id -> engine colour key
   const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const byPartName = new Map(); // normalised part name -> part id
+  // "Slope 45° 2 x 2" / "slope 45 2x2" / "Slope, 45 2 x 2" all become "slope 45 2x2"
+  const normName = (s) => String(s || '').toLowerCase().replace(/°/g, '').replace(/\s*x\s*/g, 'x').replace(/[^a-z0-9/x ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  CAT.byName = (name) => (data ? byPartName.get(normName(name)) || null : null);
 
   CAT.load = async function load(url) {
     try {
@@ -41,6 +45,13 @@
         LEGO.COLORS[key] = { key, hex: '#' + hex, name, label: name, rgb: [(n >> 16) & 255, (n >> 8) & 255, n & 255], trans: !!trans, extra: true };
       }
       if (key) keyOfRb.set(rb, key);
+    }
+    // Part names, for repairing a wrong number when the name is right ("Slope 45° 2 x 2").
+    // For each name keep the part made in the most colours (the common mould).
+    for (const [id, p] of Object.entries(data.parts)) {
+      const k = normName(p[0]);
+      const cur = byPartName.get(k);
+      if (!cur || data.parts[cur][2].length < p[2].length) byPartName.set(k, id);
     }
     CAT.ready = true;
     CAT.parts = Object.keys(data.parts).length;
@@ -110,14 +121,26 @@
   // - A colour the part was never made in is moved to the nearest colour it was made in.
   CAT.verify = function verify(row, source) {
     if (!data) return { row, status: 'unchecked' };
-    const p = CAT.part(row.id);
+    // A complete minifigure is a real LEGO item, just not a single part number.
+    if (row.id === 'minifig' || row.category === 'minifig') return { row, status: 'ok' };
+    let p = CAT.part(row.id);
+    let renamed = false;
+    if (!p && row.name) {
+      const byName = CAT.byName(row.name);
+      if (byName) {
+        p = CAT.part(byName);
+        renamed = true;
+      }
+    }
     if (!p) {
       return source === 'claude'
         ? { row, status: 'not-real', note: `${row.id} is not a LEGO part number` }
         : { row, status: 'unchecked', note: 'not in the catalogue copy' };
     }
     const fixed = Object.assign({}, row, { id: LEGO.LIB[row.id] ? row.id : p.id, name: row.name || p.name });
-    if (!row.color || CAT.madeIn(p.id, row.color)) return { row: fixed, status: 'ok', part: p };
+    if (renamed) fixed.id = p.id;
+    const okStatus = renamed ? 'renamed' : 'ok';
+    if (!row.color || CAT.madeIn(p.id, row.color)) return { row: fixed, status: okStatus, part: p, note: renamed ? `${row.id} corrected to ${p.id} (${p.name})` : undefined };
     const near = CAT.nearestMade(p.id, row.color);
     if (!near) return { row: fixed, status: 'ok', part: p };
     const was = LEGO.COLORS[row.color] ? LEGO.COLORS[row.color].name : row.color;

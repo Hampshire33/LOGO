@@ -1,0 +1,18 @@
+# PileBuild AI server. Deployed by .github/workflows/worker.yml; the API key is a secret
+# (ANTHROPIC_API_KEY), never in this file.
+name = "pilebuild-ai"
+main = "index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://hampshire33.github.io"
+# Sonnet 5 reads photos well and accepts a forced answer format; change here to try others.
+MODEL = "claude-sonnet-5"
+# Daily caps in photo tiles (a small photo is 1 tile, a phone photo up to 9).
+PER_IP_DAILY = "60"
+DAILY_TILES = "1500"
+
+# The deploy workflow creates the LIMITS namespace and fills in its id below.
+# [[kv_namespaces]]
+# binding = "LIMITS"
+# id = ""

@@ -31,8 +31,16 @@
       const id = INV.ALIAS[String(r.id)] || String(r.id);
       const k = key(id, String(r.color || ''));
       const cur = m.get(k);
-      if (cur) cur.qty += qty;
-      else m.set(k, { id, color: String(r.color || ''), qty, name: r.name || '' });
+      const rank = { high: 3, medium: 2, low: 1 };
+      if (cur) {
+        cur.qty += qty;
+        if (r.conf && (!cur.conf || rank[r.conf] < rank[cur.conf])) cur.conf = r.conf;
+      } else {
+        const row = { id, color: String(r.color || ''), qty, name: r.name || '' };
+        if (r.conf) row.conf = r.conf; // how sure the reader was (high / medium / low)
+        if (r.category) row.category = r.category;
+        m.set(k, row);
+      }
     }
     return [...m.values()];
   };

@@ -69,6 +69,8 @@ Open `app.html`. Photograph your loose bricks and PileBuild:
 3. **Suggests builds**: a sturdy striped stack generated from your own bricks and plates, how much of each ready-made model you already own (with a missing-parts list), and, on claude.ai, Claude ideas designed only from your parts. Add a second photo of what you want (a pet, a car) and Claude designs that instead.
 4. **Plays the instructions** with the booklet engine. Every model is checked for overlapping and loose parts (`src/check.js`, the same check as `tools/check-model.cjs`). "Copy model file" gives you a `src/models/*.js` file to render to video.
 
+**Identification.** Every piece is checked against the real LEGO catalogue (Rebrickable, rebuilt on each deploy): non-LEGO guesses are dropped and colours a part was never made in are corrected. The best reader is Claude: on claude.ai it uses your own account; on the public site it runs through a small server holding an API key — see [SETUP-AI.md](SETUP-AI.md) to switch it on. Large photos are read in overlapping tiles with a marked counting zone, so every piece is counted once. Without the AI reader, spread-out bricks are named one by one (Brickognize) and busy photos get a colour mix. `tools/eval/` scores identification on test photos with known contents (Actions > Evaluate identification).
+
 `node tools/build-app.cjs` bundles the app into one file: `dist/app.html` for any web host, `dist/app.artifact.html` for publishing as a claude.ai artifact.
 
 ## Your own model

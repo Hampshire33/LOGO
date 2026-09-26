@@ -1,3 +1,5 @@
 node_modules/
 exports/
 dist/
+# your own test photos can stay private: put them here instead of eval/photos/
+eval/private/

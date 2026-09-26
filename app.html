@@ -231,6 +231,7 @@
               <input type="file" id="pile-file" accept="image/*" capture="environment">
               <button id="identify" class="primary">Identify parts</button>
             </div>
+            <label class="toggle small" id="lots-row" hidden><input type="checkbox" id="lots"> Lots of small pieces: read in more detail</label>
             <p class="status" id="pile-status"></p>
           </div>
           <div class="slot">
@@ -254,7 +255,8 @@
             </div>
           </div>
         </div>
-        <p class="small muted">Tip: spread the pieces on a plain, even surface so none touch. A heap works too, but its counts are estimated by colour.</p>
+        <p class="small muted" id="reader-note"></p>
+        <p class="small muted">Tip: a sharp, well-lit photo from above works best. A phone photo is read in several parts, so fine detail counts.</p>
       </section>
 
       <!-- 2 parts -->
@@ -334,6 +336,7 @@
   <footer>Parts are real LEGO elements with BrickLink numbers; models are checked on screen for overlaps and loose parts, not built by hand. LEGO is a trademark of the LEGO Group, which does not sponsor or endorse this project. Engine based on siliconbag/lego-build (MIT).</footer>
 </div>
 
+<script src="config.js"></script>
 <!-- @inline-start -->
 <script src="src/lego.js"></script>
 <script src="src/booklet.js"></script>
@@ -346,6 +349,8 @@
 <script src="src/catalog.js"></script>
 <script src="src/designs.js"></script>
 <script src="src/fit.js"></script>
+<script src="src/identify-prompt.js"></script>
+<script src="src/identify.js"></script>
 <script src="src/models/cat.js"></script>
 <script src="src/models/microduck.js"></script>
 <!-- @inline-end -->
@@ -443,6 +448,28 @@
     return { s, ox, oy, ctx };
   }
 
+  // ---------------------------------------------------------------- AI reader
+
+  const CFG = window.PILEBUILD_CONFIG || {};
+  // The site's AI server if one is deployed; otherwise Claude on claude.ai; otherwise none.
+  function aiReader() {
+    if (CFG.aiEndpoint) return { kind: 'server', call: LEGO.identify.viaServer(CFG.aiEndpoint) };
+    if (sample && caps && caps.images) return { kind: 'claude.ai', call: LEGO.identify.viaSample(sample) };
+    return null;
+  }
+  function serverError(e) {
+    const copy = {
+      limit_visitor: 'You reached today\'s photo limit on this device. Try again tomorrow.',
+      limit_site: 'The site reached its daily photo limit. Try again tomorrow.',
+      busy: 'Claude is busy right now. Try again in a minute.',
+      too_large: 'That photo is too large to send. Try a smaller one.',
+      no_key: 'The AI server is not set up yet.',
+      server_key: 'The AI server key was refused. The site owner needs to check it.',
+      forbidden_origin: 'This copy of the page is not allowed to use the AI server.',
+    };
+    return copy[e && e.code] || (e && e.message ? 'The AI reader failed: ' + e.message : 'The AI reader failed. Try again.');
+  }
+
   // ---------------------------------------------------------------- real-LEGO check
 
   // Keeps only real LEGO parts and moves colours a part was never made in to the nearest real one.
@@ -461,7 +488,7 @@
     return { kept: INV.from(kept), removed, fixed };
   }
   const verifyNote = (v) =>
-    (v.removed.length ? ` Left out ${v.removed.length} guess${v.removed.length === 1 ? '' : 'es'} that ${v.removed.length === 1 ? 'is' : 'are'} not real LEGO parts (${v.removed.slice(0, 4).map((r) => esc(r.id)).join(', ')}).` : '') +
+    (v.removed.length ? ` Left out ${v.removed.length} guess${v.removed.length === 1 ? ' that is not a real LEGO part' : 'es that are not real LEGO parts'} (${v.removed.slice(0, 4).map((r) => esc(r.id)).join(', ')}).` : '') +
     (v.fixed ? ` Corrected ${v.fixed} colour${v.fixed === 1 ? '' : 's'} to ones LEGO actually made.` : '');
 
   // ---------------------------------------------------------------- 1. pile photo
@@ -528,19 +555,36 @@
     e.target.value = '';
   });
 
+  let usedReader = null;
   $('identify').addEventListener('click', async () => {
     if (!state.pile) return;
     const btn = $('identify');
     btn.disabled = true;
     try {
-      if (sample && caps && caps.images) {
-        setStatus($('pile-status'), 'Claude is reading the photo. This takes up to half a minute…');
-        const blob = await toBlob(state.pile.img);
-        const r = await LEGO.recognize.claude(sample, blob, state.pile.boxes.length + state.pile.heaps.reduce((t, h) => t + h.estimate, 0));
+      const reader = aiReader();
+      usedReader = reader && reader.kind;
+      if (reader) {
+        // Claude reads the photo tile by tile (see src/identify.js)
+        const plan = LEGO.identify.plan(state.pile.img.naturalWidth || state.pile.img.width, state.pile.img.naturalHeight || state.pile.img.height, $('lots').checked ? 'lots' : '');
+        const tiles = plan.tiles.length;
+        setStatus($('pile-status'), tiles > 1 ? `Claude is reading your photo in ${tiles} parts…` : 'Claude is reading your photo. This takes up to half a minute…');
+        const r = await LEGO.identify.run(state.pile.img, reader.call, {
+          density: $('lots').checked ? 'lots' : '',
+          onProgress: (d, t) => t > 1 && setStatus($('pile-status'), `Claude is reading your photo: ${d} of ${t} parts done…`),
+        });
         const v = verifyRows(r.rows, 'claude');
         setInventory(v.kept, false);
+        state.review = [];
+        renderReview();
         const n = INV.count(state.inv);
-        setStatus($('pile-status'), `Identified ${n} real LEGO piece${n === 1 ? '' : 's'}.` + verifyNote(v) + ' Check the list below and fix anything that looks wrong.' + (r.notes ? ' Note: ' + r.notes : ''));
+        const low = state.inv.filter((x) => x.conf === 'low').reduce((t, x) => t + x.qty, 0);
+        setStatus($('pile-status'),
+          `Identified ${n} real LEGO piece${n === 1 ? '' : 's'} in ${state.inv.length} kinds.` +
+          (r.hidden ? ` About ${r.hidden} more are too covered to identify.` : '') +
+          (low ? ` ${low} are best guesses, marked “check” in the list.` : '') +
+          verifyNote(v) +
+          (r.failed ? ` ${r.failed} of ${r.tiles} parts of the photo could not be read.` : '') +
+          (r.notes.length ? ' Note: ' + r.notes[0] : ''));
       } else if (!window.claude) {
         const queries = state.pile.boxes.slice();
         for (const h of state.pile.heaps) {
@@ -553,7 +597,13 @@
           }
           for (const [color, g] of groups) queries.push(Object.assign({}, g.best, { color, qty: g.qty, label: 'heap' }));
         }
-        if (!queries.length) throw { local: 'No pieces were found to identify.' };
+        if (!queries.length) {
+          // nothing separable (a full-frame pile or a busy background): report the colour mix
+          const c = LEGO.detect.census(state.pile.img);
+          throw { local: 'Pieces in this photo cannot be told apart without the AI reader' +
+            (c.shares.length ? '. Colour mix of your pile: ' + c.shares.slice(0, 5).map((x) => `${Math.round(x.share * 100)}% ${colorName(x.key)}`).join(', ') + '.' : '.') +
+            ' To identify every piece, the site needs its AI reader switched on (see SETUP-AI.md in the project), or open PileBuild on claude.ai.' };
+        }
         const r = await LEGO.recognize.brickognize(state.pile.img, queries, (d, t) =>
           setStatus($('pile-status'), `Identifying piece ${d} of ${t}…`));
         const unreachable = !r.rows.length && r.pieces.every((p) => p.error && p.error !== 'no match');
@@ -577,7 +627,7 @@
         throw { local: 'Photo reading needs Claude, which is not available in this view. Add parts by hand below.' };
       }
     } catch (e) {
-      setStatus($('pile-status'), e && e.local ? e.local : claudeError(e), true);
+      setStatus($('pile-status'), e && e.local ? e.local : usedReader === 'server' ? serverError(e) : claudeError(e), true);
     }
     btn.disabled = false;
   });
@@ -729,7 +779,8 @@
       tr.innerHTML =
         '<td class="pic"></td>' +
         `<td><div class="cell2"><select data-i="${i}" data-f="id" aria-label="Part">${inLib ? '' : `<option value="${esc(r.id)}">${esc(r.id)} · ${esc(r.name || 'not in library')}</option>`}${partOptions}</select>` +
-        (inLib ? '' : '<span class="small muted">Not in the drawing library yet</span>') + '</div></td>' +
+        (inLib ? '' : '<span class="small muted">Not in the drawing library yet</span>') +
+        (r.conf === 'low' ? '<span class="chip warn" title="The reader was not sure about this one">check</span>' : '') + '</div></td>' +
         `<td><div class="cell2"><select data-i="${i}" data-f="color" aria-label="Colour">${LEGO.COLORS[r.color] ? '' : `<option value="${esc(r.color)}">${esc(r.color || 'unknown')}</option>`}${colorOptionsFor(r.id)}</select></div></td>` +
         `<td class="qty"><input type="number" min="0" max="999" value="${r.qty}" data-i="${i}" data-f="qty" aria-label="Quantity"></td>` +
         `<td class="x"><button class="icon-btn" data-del="${i}" aria-label="Remove row">✕</button></td>`;
@@ -1154,6 +1205,10 @@
     }
     $('ai-block').hidden = !sample;
     $('ai-off').hidden = !!sample;
+    $('lots-row').hidden = !aiReader();
+    $('reader-note').textContent = aiReader()
+      ? (CFG.aiEndpoint ? 'Photos are read by Claude through the PileBuild AI server.' : 'Photos are read by Claude on your claude.ai account.')
+      : 'AI reader is off here: spread-out bricks are named one by one; heaps and busy photos get a rough count.';
   })();
   $('ai-block').hidden = true;
 })();

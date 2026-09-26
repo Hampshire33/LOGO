@@ -1,0 +1,79 @@
+name: Deploy AI server
+
+# Deploys worker/ (the PileBuild AI server) to Cloudflare and tells the site its address.
+# Needs three repository secrets (Settings > Secrets and variables > Actions):
+#   ANTHROPIC_API_KEY      from console.anthropic.com
+#   CLOUDFLARE_API_TOKEN   Cloudflare token from the "Edit Cloudflare Workers" template
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare account id
+# Without them this workflow does nothing and the site keeps working without the AI reader.
+
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', 'src/identify-prompt.js', '.github/workflows/worker.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the keys are set
+        id: keys
+        env:
+          AK: ${{ secrets.ANTHROPIC_API_KEY }}
+          CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACC: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$AK" ] && [ -n "$CF" ] && [ -n "$ACC" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::AI server not deployed: add ANTHROPIC_API_KEY, CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets (see SETUP-AI.md)."
+          fi
+      - name: Storage for daily limits
+        if: steps.keys.outputs.ok == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node worker/ensure-kv.cjs
+      - name: Deploy
+        id: deploy
+        if: steps.keys.outputs.ok == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        working-directory: worker
+        run: |
+          npx --yes wrangler@4 deploy 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "AI server: $url"
+      - name: Store the API key as a server secret
+        if: steps.keys.outputs.ok == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AK: ${{ secrets.ANTHROPIC_API_KEY }}
+        working-directory: worker
+        run: printf '%s' "$AK" | npx --yes wrangler@4 secret put ANTHROPIC_API_KEY
+      - name: Tell the site where the server is
+        if: steps.keys.outputs.ok == 'true' && steps.deploy.outputs.url != ''
+        run: |
+          mkdir -p /tmp/cfg && cd /tmp/cfg
+          echo "${{ steps.deploy.outputs.url }}" > ai-endpoint.txt
+          git init -q -b site-config
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add ai-endpoint.txt
+          git commit -q -m "AI server address"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" site-config

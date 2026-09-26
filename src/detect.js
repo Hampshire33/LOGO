@@ -215,6 +215,54 @@
   }
   LEGO.detect.colorClass = colorClass;
 
+  // Colour mix of a pile when pieces cannot be separated (full-frame piles, busy backgrounds).
+  // If the photo's border is one even colour it is background and left out; if the border is
+  // itself busy (the pile fills the frame) every pixel counts.
+  LEGO.detect.census = function census(src) {
+    const W0 = src.naturalWidth || src.width, H0 = src.naturalHeight || src.height;
+    const s = Math.min(1, 240 / Math.max(W0, H0));
+    const W = Math.max(1, Math.round(W0 * s)), H = Math.max(1, Math.round(H0 * s));
+    const cv = document.createElement('canvas');
+    cv.width = W;
+    cv.height = H;
+    const ctx = cv.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(src, 0, 0, W, H);
+    const px = ctx.getImageData(0, 0, W, H).data;
+    const border = new Map();
+    let nb = 0;
+    const tally = (m, x, y) => {
+      const i = (y * W + x) * 4;
+      const k = colorClass(px[i], px[i + 1], px[i + 2]);
+      m.set(k, (m.get(k) || 0) + 1);
+    };
+    for (let x = 0; x < W; x++) { tally(border, x, 0); tally(border, x, H - 1); nb += 2; }
+    for (let y = 0; y < H; y++) { tally(border, 0, y); tally(border, W - 1, y); nb += 2; }
+    // The floor: the one or two border colours that cover most of the edge (a carpet or wood
+    // grain shows as two shades). A pile that fills the frame has no such colours.
+    const ranked = [...border.entries()].sort((a, b) => b[1] - a[1]);
+    const floor = new Set();
+    let covered = 0;
+    for (const [k, v] of ranked.slice(0, 2)) {
+      if (covered / nb >= 0.75) break;
+      floor.add(k);
+      covered += v;
+    }
+    const plainBorder = covered / nb >= 0.75;
+    const all = new Map();
+    let n = 0;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        const k = colorClass(px[i], px[i + 1], px[i + 2]);
+        if (plainBorder && floor.has(k)) continue;
+        all.set(k, (all.get(k) || 0) + 1);
+        n++;
+      }
+    }
+    const shares = [...all.entries()].map(([key, v]) => ({ key, share: v / (n || 1) })).filter((c) => c.share >= 0.03).sort((a, b) => b.share - a.share);
+    return { shares, fullFrame: !plainBorder };
+  };
+
   // One detected piece as its own square image (for recognisers that take one part per photo).
   LEGO.detect.crop = function crop(src, box, size) {
     const s = size || 320;
