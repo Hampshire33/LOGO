@@ -105,6 +105,11 @@
     const W = img.naturalWidth || img.width;
     const H = img.naturalHeight || img.height;
     if (o.adaptive === false) return ID.runPlan(img, callTile, o, ID.plan(W, H, o.density));
+    // Cost first: without "lots of small pieces", a photo is read once, whole.
+    if (o.density !== 'lots') {
+      const one = await ID.runPlan(img, callTile, o, ID.plan(W, H, '', 1));
+      return Object.assign(one, { passes: 1 });
+    }
     const first = await ID.runPlan(img, callTile, Object.assign({}, o, { onProgress: null }), ID.plan(W, H, '', 1));
     const est = first.rows.reduce((t, r) => t + r.qty, 0) + first.hidden;
     // Tile when the pile fills the frame (no floor showing) or is very large; a big heap with
@@ -195,17 +200,40 @@
 
   // ---------------------------------------------------------------- callers
 
+  // Published prices, US dollars per million tokens (input, output). platform.claude.com/docs pricing.
+  ID.PRICE = { 'claude-sonnet-5': [2, 10], 'claude-opus-5-5': [4, 20], 'claude-haiku-4-5-20251001': [1, 5] };
+
+  // Adds up what reads cost, from the token usage the server reports.
+  ID.meter = function meter() {
+    const m = { reads: 0, in: 0, out: 0, usd: 0, models: new Set() };
+    m.add = (usage, model) => {
+      if (!usage) return;
+      const p = ID.PRICE[model] || [4, 20];
+      const i = (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
+      const o = usage.output_tokens || 0;
+      m.reads++;
+      m.in += i;
+      m.out += o;
+      m.usd += (i * p[0] + o * p[1]) / 1e6;
+      if (model) m.models.add(model);
+    };
+    return m;
+  };
+
   // Through the AI server (public site). One request per tile; the server holds the prompt.
-  ID.viaServer = function viaServer(endpoint) {
+  // opt.precise asks for the stronger model; opt.meter collects the cost of each read.
+  ID.viaServer = function viaServer(endpoint, opt) {
+    const o = opt || {};
     return async (blob, n, of) => {
       const b64 = await blobToBase64(blob);
       const r = await fetch(endpoint.replace(/\/$/, '') + '/v1/identify-tile', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ image: b64, n, of }),
+        body: JSON.stringify({ image: b64, n, of, precise: !!o.precise }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw Object.assign(new Error(j.error || 'HTTP ' + r.status), { code: j.code || 'server_error', status: r.status });
+      if (o.meter) o.meter.add(j.usage, j.model);
       return j.answer;
     };
   };

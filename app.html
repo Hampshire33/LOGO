@@ -231,7 +231,10 @@
               <input type="file" id="pile-file" accept="image/*" capture="environment">
               <button id="identify" class="primary">Identify parts</button>
             </div>
-            <label class="toggle small" id="lots-row" hidden><input type="checkbox" id="lots"> Lots of small pieces: read in more detail</label>
+            <div class="row" id="reader-opts" hidden style="gap: 4px 16px">
+              <label class="toggle small"><input type="checkbox" id="lots"> Lots of small pieces (reads in parts, costs more)</label>
+              <label class="toggle small" id="precise-row"><input type="checkbox" id="precise"> Precise read (about 3× the cost)</label>
+            </div>
             <p class="status" id="pile-status"></p>
           </div>
           <div class="slot">
@@ -453,10 +456,17 @@
   const CFG = window.PILEBUILD_CONFIG || {};
   // The site's AI server if one is deployed; otherwise Claude on claude.ai; otherwise none.
   function aiReader() {
-    if (CFG.aiEndpoint) return { kind: 'server', call: LEGO.identify.viaServer(CFG.aiEndpoint) };
+    if (CFG.aiEndpoint) {
+      const meter = LEGO.identify.meter();
+      return { kind: 'server', meter, call: LEGO.identify.viaServer(CFG.aiEndpoint, { precise: $('precise').checked, meter }) };
+    }
     if (sample && caps && caps.images) return { kind: 'claude.ai', call: LEGO.identify.viaSample(sample) };
     return null;
   }
+  const costText = (usd) => {
+    const c = Math.round(usd * 100);
+    return usd < 0.005 ? 'under 1 US cent' : usd < 1 ? `${c} US cent${c === 1 ? '' : 's'}` : `$${usd.toFixed(2)}`;
+  };
   function serverError(e) {
     const copy = {
       limit_visitor: 'You reached today\'s photo limit on this device. Try again tomorrow.',
@@ -566,8 +576,8 @@
       if (reader) {
         // Claude reads the photo tile by tile (see src/identify.js)
         const plan = LEGO.identify.plan(state.pile.img.naturalWidth || state.pile.img.width, state.pile.img.naturalHeight || state.pile.img.height, $('lots').checked ? 'lots' : '');
-        const tiles = plan.tiles.length;
-        setStatus($('pile-status'), tiles > 1 ? `Claude is reading your photo in ${tiles} parts…` : 'Claude is reading your photo. This takes up to half a minute…');
+        const tiles = $('lots').checked ? plan.tiles.length : 1;
+        setStatus($('pile-status'), tiles > 1 ? `Claude is reading your photo, then in up to ${tiles} parts if it is a big pile…` : 'Claude is reading your photo. This takes up to half a minute…');
         const r = await LEGO.identify.run(state.pile.img, reader.call, {
           density: $('lots').checked ? 'lots' : '',
           onProgress: (d, t) => t > 1 && setStatus($('pile-status'), `Claude is reading your photo: ${d} of ${t} parts done…`),
@@ -584,7 +594,8 @@
           (low ? ` ${low} are best guesses, marked “check” in the list.` : '') +
           verifyNote(v) +
           (r.failed ? ` ${r.failed} of ${r.tiles} parts of the photo could not be read.` : '') +
-          (r.notes.length ? ' Note: ' + r.notes[0] : ''));
+          (r.notes.length ? ' Note: ' + r.notes[0] : '') +
+          (reader.meter && reader.meter.reads ? ` This read cost about ${costText(reader.meter.usd)} (${reader.meter.reads} call${reader.meter.reads === 1 ? '' : 's'}).` : ''));
       } else if (!window.claude) {
         const queries = state.pile.boxes.slice();
         for (const h of state.pile.heaps) {
@@ -1205,7 +1216,8 @@
     }
     $('ai-block').hidden = !sample;
     $('ai-off').hidden = !!sample;
-    $('lots-row').hidden = !aiReader();
+    $('reader-opts').hidden = !aiReader();
+    $('precise-row').hidden = !CFG.aiEndpoint;
     $('reader-note').textContent = aiReader()
       ? (CFG.aiEndpoint ? 'Photos are read by Claude through the PileBuild AI server.' : 'Photos are read by Claude on your claude.ai account.')
       : 'AI reader is off here: spread-out bricks are named one by one; heaps and busy photos get a rough count.';

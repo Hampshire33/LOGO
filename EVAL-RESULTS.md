@@ -33,6 +33,14 @@ Counting is the limit: a 415 px photo of a ~1,500-piece heap gave 57 pieces, and
 full-frame pile gave an implausibly high 860. Small web images of big piles cannot be
 counted piece by piece; sharp phone photos are read in tiles and count far better.
 
+## Prompt v6: compact answers (not yet measured)
+
+Same rules as v5; the answer uses one-letter keys and drops the name and category fields the
+page derives itself. On a 28-kind answer that is 59% fewer characters, and output tokens are
+most of the cost. Sonnet 5 is the default again, with Opus 5.5 as an opt-in "precise read".
+Measuring v6 needs about $0.50 of credit (Sonnet, 2 photos per kind): run it before trusting
+the accuracy numbers above for v6.
+
 ## What to try next
 
 - Two readings of dense tiles with different crops, keeping counts they agree on.

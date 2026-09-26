@@ -8,19 +8,21 @@ It takes about 15 minutes, once. After that, every push to `main` keeps the serv
 
 ## What it costs
 
-Claude usage is billed to your Anthropic account, separately from a claude.ai plan (and not
-covered by Claude Code cloud credits). The server uses Claude Opus 5.5 ($4 / $20 per million
-input / output tokens), which identified parts about twice as well as Sonnet 5 on the test
-bench (see EVAL-RESULTS.md). Measured costs:
+Claude usage is billed to your Anthropic account (prepaid credit at platform.claude.com),
+separately from a claude.ai plan. The page shows the cost of every read right after it.
 
-- a small photo (web image, few hundred pixels): about 5-6 US cents
-- a clear table photo (1-2 megapixels): about 20-25 cents
-- a busy phone photo that fills the frame: an overview plus up to 9 tiles, up to about $1-2
+- **Normal read** (default): Claude Sonnet 5 ($2 / $10 per million input / output tokens), one
+  call per photo, answer capped at 4,000 tokens. Expected: about 1-3 US cents a photo.
+- **Precise read** (tick box): Claude Opus 5.5 ($4 / $20), about twice as accurate on the test
+  bench (EVAL-RESULTS.md). Expected: about 2-6 cents a photo. Counts as 3 reads against the caps.
+- **Lots of small pieces** (tick box): if the first read finds a big pile filling the frame, the
+  photo is read again in up to 9 parts: up to about 10x the cost of a normal read.
 
-The server has daily caps counted in reads: 20 per visitor and 200 for the whole site (at most
-roughly $50 a day). Change them in `worker/wrangler.toml`. To spend about a third as much, set
-`MODEL = "claude-sonnet-5"` there (lower accuracy). Always set a monthly spend limit in the
-console as the backstop.
+These are estimates from the compact answer format (prompt v6), which cut the answer size by
+about 60% against v5; v6 has not been re-measured on the bench yet.
+
+Daily caps, counted in reads: 20 per visitor and 200 for the whole site. Change them in
+`worker/wrangler.toml`. With auto-reload off, spending can never exceed the credit you buy.
 
 ## 1. Anthropic API key
 

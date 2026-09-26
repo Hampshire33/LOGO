@@ -30,11 +30,12 @@ export default {
       vary: 'origin',
     };
     const url = new URL(req.url);
-    const model = env.MODEL || 'claude-opus-5-5';
+    const defaultModel = env.MODEL || 'claude-sonnet-5';
+    const preciseModel = env.PRECISE_MODEL || 'claude-opus-5-5';
 
     if (req.method === 'OPTIONS') return new Response(null, { status: okOrigin ? 204 : 403, headers: cors });
     if (req.method === 'GET' && url.pathname === '/v1/health') {
-      return json({ ok: !!env.ANTHROPIC_API_KEY, model, prompt: P.VERSION }, 200, cors);
+      return json({ ok: !!env.ANTHROPIC_API_KEY, model: defaultModel, precise: preciseModel, prompt: P.VERSION }, 200, cors);
     }
     if (req.method !== 'POST' || url.pathname !== '/v1/identify-tile') {
       return json({ error: 'Not found.', code: 'not_found' }, 404, cors);
@@ -56,18 +57,23 @@ export default {
       return json({ error: 'Send one JPEG image, base64-encoded, under 2.5 MB.', code: 'bad_image' }, 400, cors);
     }
 
-    // Daily caps (tiles): per visitor and for the whole site. Needs the LIMITS KV binding.
+    // "Precise" reads use the stronger, ~3x dearer model and count as 3 reads against the caps.
+    const precise = body.precise === true && env.ALLOW_PRECISE !== '0';
+    const model = precise ? preciseModel : defaultModel;
+    const weight = precise ? 3 : 1;
+
+    // Daily caps (reads): per visitor and for the whole site. Needs the LIMITS KV binding.
     if (env.LIMITS) {
       const day = new Date().toISOString().slice(0, 10);
       const ip = req.headers.get('cf-connecting-ip') || 'unknown';
       const perIp = Number(env.PER_IP_DAILY || 20);
       const all = Number(env.DAILY_TILES || 200);
       const [a, b] = await Promise.all([env.LIMITS.get(`ip:${day}:${ip}`), env.LIMITS.get(`all:${day}`)]);
-      if (Number(a || 0) >= perIp) return json({ error: 'Daily limit for this device reached. Try again tomorrow.', code: 'limit_visitor' }, 429, cors);
-      if (Number(b || 0) >= all) return json({ error: 'The site reached its daily reading limit. Try again tomorrow.', code: 'limit_site' }, 429, cors);
+      if (Number(a || 0) + weight > perIp) return json({ error: 'Daily limit for this device reached. Try again tomorrow.', code: 'limit_visitor' }, 429, cors);
+      if (Number(b || 0) + weight > all) return json({ error: 'The site reached its daily reading limit. Try again tomorrow.', code: 'limit_site' }, 429, cors);
       await Promise.all([
-        env.LIMITS.put(`ip:${day}:${ip}`, String(Number(a || 0) + 1), { expirationTtl: 172800 }),
-        env.LIMITS.put(`all:${day}`, String(Number(b || 0) + 1), { expirationTtl: 172800 }),
+        env.LIMITS.put(`ip:${day}:${ip}`, String(Number(a || 0) + weight), { expirationTtl: 172800 }),
+        env.LIMITS.put(`all:${day}`, String(Number(b || 0) + weight), { expirationTtl: 172800 }),
       ]);
     }
 
@@ -75,7 +81,8 @@ export default {
       { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } },
       { type: 'text', text: P.userText(body.n, body.of) },
     ];
-    const base = { model, max_tokens: 8000, system: P.SYSTEM, messages: [{ role: 'user', content }] };
+    // 4000 output tokens is plenty for the compact answer and caps what one read can cost.
+    const base = { model, max_tokens: 4000, system: P.SYSTEM, messages: [{ role: 'user', content }] };
 
     // Forced, strict tool call where the model allows it; Opus 5.5, Fable and Mythos do not allow
     // forcing, so they are asked with the tool offered (auto). Any 400 falls back to auto too.

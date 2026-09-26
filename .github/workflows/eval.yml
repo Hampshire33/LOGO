@@ -3,14 +3,15 @@ name: Evaluate identification
 # Scores how well photos are identified, on test scenes with known contents (and on your own
 # photos in eval/photos/ if you add them with a truth.json). Run it from the Actions tab after
 # changing the prompt, the tiling or the model, and compare the report with the last run.
-# The Claude run needs the ANTHROPIC_API_KEY secret; a run costs roughly 10-40 US cents.
+# The Claude run needs the ANTHROPIC_API_KEY secret. With the defaults (Sonnet 5, 3 photos per
+# kind = 12 photos) a run costs roughly 20-50 US cents; with claude-opus-5-5 about twice that.
 
 on:
   workflow_dispatch:
     inputs:
       model:
         description: Claude model
-        default: claude-opus-5-5
+        default: claude-sonnet-5
       per_kind:
         description: Test photos per scene kind (spread, heap, carpet, dense)
         default: '3'

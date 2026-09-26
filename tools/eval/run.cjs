@@ -11,7 +11,7 @@ const path = require('path');
 const args = process.argv.slice(2);
 const opt = (k, d) => (args.includes(k) ? args[args.indexOf(k) + 1] : d);
 const ENGINE = opt('--engine', 'offline');
-const MODEL = opt('--model', 'claude-opus-5-5');
+const MODEL = opt('--model', 'claude-sonnet-5');
 const PER = Number(opt('--per-kind', 3));
 const KINDS = opt('--kinds', 'spread,heap,carpet,dense').split(',');
 const OUT = opt('--out', path.resolve(__dirname, '../../dist/eval-report.md'));
@@ -53,7 +53,7 @@ async function callClaude(b64, n, of) {
     { type: 'text', text: P.userText(n, of) },
   ];
   const canForce = !/opus-5-5|fable|mythos/.test(MODEL);
-  const body = { model: MODEL, max_tokens: 8000, system: P.SYSTEM, messages: [{ role: 'user', content }], tools: [P.TOOL], tool_choice: canForce ? { type: 'tool', name: P.TOOL.name } : { type: 'auto' } };
+  const body = { model: MODEL, max_tokens: 4000, system: P.SYSTEM, messages: [{ role: 'user', content }], tools: [P.TOOL], tool_choice: canForce ? { type: 'tool', name: P.TOOL.name } : { type: 'auto' } };
   for (let attempt = 0; attempt < 3; attempt++) {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',

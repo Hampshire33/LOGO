@@ -6,9 +6,12 @@ compatibility_date = "2026-09-01"
 
 [vars]
 ALLOWED_ORIGINS = "https://hampshire33.github.io"
-# Measured on the test bench (tools/eval): Opus 5.5 identified parts+colours about twice as well
-# as Sonnet 5 (spread 91% vs 47%, carpet 78% vs 34%) at ~3x the cost (~23 vs ~7 US cents a photo).
-MODEL = "claude-opus-5-5"
+# Default reader: Sonnet 5 ($2/$10 per million tokens). "Precise read" on the page uses
+# PRECISE_MODEL ($4/$20, about twice as accurate on the test bench, see EVAL-RESULTS.md) and
+# counts as 3 reads against the caps. Set ALLOW_PRECISE = "0" to switch precise reads off.
+MODEL = "claude-sonnet-5"
+PRECISE_MODEL = "claude-opus-5-5"
+ALLOW_PRECISE = "1"
 # Daily caps in photo reads (a small photo is 1 read; a busy phone photo 1 overview + up to 9 tiles).
 # At ~5-25 US cents a read with Opus 5.5, 200 reads a day is at most ~$50: set your console spend limit too.
 PER_IP_DAILY = "20"
