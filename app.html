@@ -182,6 +182,14 @@
   .needs .sum { font-size: 14px; }
   .needs .sum b { font-weight: 600; }
   .tctl { display: grid; gap: 8px; }
+  .prog { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+  .pbar { height: 10px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--line); overflow: hidden; }
+  .pbar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 5px; transition: width 0.3s linear; }
+  .prog.done .pbar i { background: var(--good); }
+  .prog.fail .pbar i { background: var(--bad); }
+  .ptext { font: 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .prog.done .ptext { color: var(--ink); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { .pbar i { transition: none; } }
   .partsbox summary { cursor: pointer; font-size: 14px; color: var(--link); padding-block: 4px; }
   .partsbox[open] summary { margin-bottom: 10px; }
   .partsbox { display: grid; gap: 12px; }
@@ -244,6 +252,7 @@
             <label class="toggle small"><input type="checkbox" id="lots"> Lots of small pieces (reads in parts, costs more)</label>
             <label class="toggle small" id="precise-row"><input type="checkbox" id="precise"> Precise read (about 3× the cost)</label>
           </div>
+          <div class="prog" id="pile-prog" hidden><div class="pbar"><i></i></div><span class="ptext"></span></div>
           <p class="status" id="pile-status"></p>
         </div>
 
@@ -296,6 +305,7 @@
           <button id="ai-design" class="primary big" disabled>Design it in 3D</button>
           <span class="small muted" id="design-cost"></span>
         </div>
+        <div class="prog" id="design-prog" hidden><div class="pbar"><i></i></div><span class="ptext"></span></div>
         <p class="status" id="design-status"></p>
         <p class="small muted" id="design-off" hidden>Designing needs Claude: open PileBuild on the public site (with its AI server) or on claude.ai.</p>
       </section>
@@ -564,6 +574,59 @@
     e.target.value = '';
   });
 
+  // ---------------------------------------------------------------- progress bars
+
+  // A bar with elapsed time and an estimate. Work is split into stages (e.g. photo parts, design
+  // rounds); inside a stage the bar eases toward the stage's end by the estimated time, never
+  // claiming to be finished before it is. done() shows the time taken and what it cost.
+  function progress(id) {
+    const el = $(id);
+    const bar = el.querySelector('i');
+    const txt = el.querySelector('.ptext');
+    let t0 = 0, timer = null, from = 0, to = 1, est = 20, st = 0, shown = 0;
+    const fmt = (sec) => (sec < 60 ? `${Math.round(sec)} s` : `${Math.floor(sec / 60)} min ${Math.round(sec % 60)} s`);
+    function draw() {
+      const now = performance.now() / 1000;
+      const inStage = now - st;
+      // eases toward the stage end; about 63% of the way at the estimate, never past 97%
+      const f = from + (to - from) * Math.min(0.97, 1 - Math.exp(-inStage / Math.max(1, est)));
+      shown = Math.max(shown, Math.min(0.99, f));
+      bar.style.width = (shown * 100).toFixed(1) + '%';
+      const left = Math.max(0, est - inStage);
+      txt.textContent = `${fmt(now - t0)}` + (left > 2 ? ` · about ${fmt(left)} left` : ' · almost done…');
+    }
+    return {
+      start(estimate) {
+        el.hidden = false;
+        el.classList.remove('done', 'fail');
+        t0 = st = performance.now() / 1000;
+        from = 0; to = 1; est = estimate; shown = 0;
+        clearInterval(timer);
+        timer = setInterval(draw, 250);
+        draw();
+      },
+      // move to a new stage: the bar now runs from `a` to `b` over `estimate` seconds
+      stage(a, b, estimate) {
+        from = Math.max(shown, a); to = Math.max(b, from + 0.02); est = estimate; st = performance.now() / 1000;
+        draw();
+      },
+      done(usd) {
+        clearInterval(timer);
+        el.classList.add('done');
+        bar.style.width = '100%';
+        const secs = performance.now() / 1000 - t0;
+        txt.textContent = `Done in ${fmt(secs)}` + (usd == null ? '' : usd === 'plan' ? ' · on your claude.ai plan' : ` · $${usd < 0.1 ? usd.toFixed(3) : usd.toFixed(2)}`);
+      },
+      fail() {
+        clearInterval(timer);
+        el.classList.add('fail');
+        txt.textContent = `Stopped after ${fmt(performance.now() / 1000 - t0)}`;
+      },
+    };
+  }
+  const pileProg = progress('pile-prog');
+  const designProg = progress('design-prog');
+
   let usedReader = null;
   $('identify').addEventListener('click', async () => {
     if (!state.pile) return;
@@ -576,11 +639,22 @@
         // Claude reads the photo tile by tile (see src/identify.js)
         const plan = LEGO.identify.plan(state.pile.img.naturalWidth || state.pile.img.width, state.pile.img.naturalHeight || state.pile.img.height, $('lots').checked ? 'lots' : '');
         const tiles = $('lots').checked ? plan.tiles.length : 1;
-        setStatus($('pile-status'), tiles > 1 ? `Claude is reading your photo, then in up to ${tiles} parts if it is a big pile…` : 'Claude is reading your photo. This takes up to half a minute…');
+        setStatus($('pile-status'), tiles > 1 ? `Claude is reading your photo, then in up to ${tiles} parts if it is a big pile…` : 'Claude is reading your photo…');
+        // measured: one read ~20 s (precise ~30 s); tiles run 3 at a time
+        const one = $('precise').checked ? 30 : 20;
+        pileProg.start(one);
+        if (tiles > 1) pileProg.stage(0, 1 / (tiles + 1), one);
         const r = await LEGO.identify.run(state.pile.img, reader.call, {
           density: $('lots').checked ? 'lots' : '',
-          onProgress: (d, t) => t > 1 && setStatus($('pile-status'), `Claude is reading your photo: ${d} of ${t} parts done…`),
+          onBig: (est, n) => pileProg.stage(1 / (n + 1), 1, one * Math.ceil(n / 3)),
+          onProgress: (d, t) => {
+            if (t > 1) {
+              setStatus($('pile-status'), `Claude is reading your photo: ${d} of ${t} parts done…`);
+              pileProg.stage((1 + d) / (t + 1), (2 + d) / (t + 1), one);
+            }
+          },
         });
+        pileProg.done(reader.meter ? reader.meter.usd : 'plan');
         const v = verifyRows(r.rows, 'claude');
         setInventory(v.kept, false);
         state.review = [];
@@ -614,8 +688,12 @@
             (c.shares.length ? '. Colour mix of your pile: ' + c.shares.slice(0, 5).map((x) => `${Math.round(x.share * 100)}% ${colorName(x.key)}`).join(', ') + '.' : '.') +
             ' To identify every piece, the site needs its AI reader switched on (see SETUP-AI.md in the project), or open PileBuild on claude.ai.' };
         }
-        const r = await LEGO.recognize.brickognize(state.pile.img, queries, (d, t) =>
-          setStatus($('pile-status'), `Identifying piece ${d} of ${t}…`));
+        pileProg.start(2 * queries.length / 3 + 2);
+        const r = await LEGO.recognize.brickognize(state.pile.img, queries, (d, t) => {
+          setStatus($('pile-status'), `Identifying piece ${d} of ${t}…`);
+          pileProg.stage(d / t, Math.min(1, (d + 3) / t), 2);
+        });
+        pileProg.done(0);
         const unreachable = !r.rows.length && r.pieces.every((p) => p.error && p.error !== 'no match');
         if (unreachable) throw { local: 'Brickognize could not be reached from this page (' + (r.lastError || 'no answer') + '). Add parts by hand below.' };
         const v = verifyRows(r.rows, 'brickognize');
@@ -637,6 +715,7 @@
         throw { local: 'Photo reading needs Claude, which is not available in this view. Add parts by hand below.' };
       }
     } catch (e) {
+      if (!$('pile-prog').hidden) pileProg.fail();
       setStatus($('pile-status'), e && e.local ? e.local : usedReader === 'server' ? serverError(e) : claudeError(e), true);
     }
     btn.disabled = false;
@@ -898,6 +977,10 @@
     const inventory = state.inv.filter(INV.usable).map((r) => ({ id: r.id, color: r.color, qty: r.qty }));
     const onlyMine = $('design-mine').checked;
     const size = $('design-size').value;
+    // measured: ~15 s plus ~1 s per part per round (17 parts 22 s, 80 parts 92 s)
+    const oneRound = 15 + LEGO.designAI.targetParts(inventory, size) * 1.0;
+    designProg.start(oneRound);
+    designProg.stage(0, 0.85, oneRound);
     try {
       let r;
       if (designer() === 'server') {
@@ -914,7 +997,10 @@
           return j;
         }, {
           image, inventory, onlyMine, size,
-          onRound: (n) => setStatus($('design-status'), n === 1 ? 'Claude is looking at your photo and designing it…' : 'Claude is fixing what the check found…'),
+          onRound: (n) => {
+            setStatus($('design-status'), n === 1 ? 'Claude is looking at your photo and designing it…' : 'Claude is fixing what the check found…');
+            if (n > 1) designProg.stage(0.55, 0.97, oneRound * 0.8);
+          },
         });
       } else {
         setStatus($('design-status'), 'Claude is looking at your photo and designing it…');
@@ -923,6 +1009,7 @@
         const d = await LEGO.ai.design(sample, state.inv, idea, blob, { onlyMine });
         r = { model: d.model, check: { ok: d.check.ok, problems: d.check.problems || [] } };
       }
+      designProg.done(designer() === 'server' ? meter.usd : 'plan');
       r.model = LEGO.realColors(r.model).model;
       const cov = INV.coverage(state.inv, r.model);
       const miss = cov.missing.reduce((t, m) => t + m.qty, 0);
@@ -938,6 +1025,7 @@
         (r.check.ok ? ' Checked: nothing overlaps or floats.' : ` ${r.check.problems.length} problems left.`) +
         ` Took ${Math.round((Date.now() - t0) / 1000)} s` + (meter.reads ? `, cost about ${costText(meter.usd)}.` : '.'));
     } catch (e) {
+      designProg.fail();
       setStatus($('design-status'), e && e.message === 'no model came back' ? 'No model came back. Try again, or try a clearer photo.' : designer() === 'server' ? serverError(e) : claudeError(e), true);
     }
     updateDesignButton();
