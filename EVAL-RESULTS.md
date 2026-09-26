@@ -47,8 +47,16 @@ pieces" is ticked). Run on GitHub Actions, 8 photos, $0.20 total.
 
 Cost per photo: about 7 US cents (v5) -> about 2.5 cents (v6). Accuracy held on spread, heap
 and carpet (differences within run-to-run noise); dense piles are worse without tiling, which
-is now opt-in. Opus 5.5 ("precise read") was about twice as accurate with v5; not yet re-run
-with v6.
+is now opt-in.
+
+| Opus 5.5 ("precise read") | Spread | Heap | Carpet | Dense |
+|---|---|---|---|---|
+| v5, adaptive tiling: count error / part+colour | 4% / 91% | 13% / 60% | 8% / 78% | 34% / 46% |
+| **v6, single read**: count error / part+colour | **4% / 91%** | **15% / 55%** | **7% / 66%** | 67% / 30% |
+| v6 colour only / part only | 95% / 94% | 82% / 68% | 88% / 79% | 49% / 44% |
+
+Opus with v6: $0.36 for 8 photos, about 4.5 cents a photo (v5: about 23 cents). Still about
+twice as accurate as Sonnet on identified parts, for about 2 cents more per photo.
 
 ## What to try next
 
