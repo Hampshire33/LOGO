@@ -233,7 +233,7 @@
             <div class="row" id="target-colors" aria-label="Main colours in the photo"></div>
           </div>
         </div>
-        <p class="small muted">Tip: spread the pieces on a plain, even surface so none touch. Pieces that touch are counted as one.</p>
+        <p class="small muted">Tip: spread the pieces on a plain, even surface so none touch. A heap works too, but its counts are estimated by colour.</p>
       </section>
 
       <!-- 2 parts -->
@@ -245,7 +245,7 @@
             <h3 id="review-title">Check these pieces</h3>
             <button class="link" id="review-close">Done checking</button>
           </div>
-          <p class="small muted">Numbers match the boxes on your photo. Pick the right part, then add it to your list.</p>
+          <p class="small muted">Numbers match the boxes on your photo; heap rows are one card per colour with an estimated count. Pick the right part and count, then add it to your list.</p>
           <div class="review-list" id="review-list"></div>
         </div>
         <div class="tablewrap">
@@ -417,19 +417,38 @@
       ctx.font = '600 13px "IBM Plex Sans", sans-serif';
       ctx.fillText(String(i + 1), x + 5, y + 14);
     });
+    // heap regions: thin outlines, estimated count in the corner
+    ctx.lineWidth = 1.5;
+    ctx.font = '600 11px "IBM Plex Sans", sans-serif';
+    for (const h of p.heaps || []) {
+      for (const r of h.parts) {
+        const x = m.ox + r.x * m.s, y = m.oy + r.y * m.s;
+        ctx.strokeStyle = 'rgba(27, 31, 36, 0.75)';
+        ctx.strokeRect(x, y, r.w * m.s, r.h * m.s);
+        ctx.fillStyle = 'rgba(27, 31, 36, 0.8)';
+        ctx.fillRect(x, y, 16, 14);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillText(String(r.count), x + 4, y + 11);
+      }
+    }
     $('pile-example').hidden = !p.example;
   }
 
   function setPile(img, example) {
     const found = LEGO.detect(img);
-    state.pile = { img, boxes: found.boxes, example };
+    state.pile = { img, boxes: found.boxes, heaps: found.heaps || [], example };
     state.review = [];
     renderReview();
     showPile();
     const n = found.boxes.length;
-    setStatus($('pile-status'), n
-      ? `Found ${n} separate piece${n === 1 ? '' : 's'}. ` + (example ? 'This is an example; its parts list is already filled in.' : 'Now identify them.')
-      : 'No separate pieces found. Try a plainer background with more light.');
+    const heapCount = state.pile.heaps.reduce((t, h) => t + h.estimate, 0);
+    const parts = [];
+    if (n) parts.push(`${n} separate piece${n === 1 ? '' : 's'}`);
+    if (heapCount) parts.push(`a heap of about ${heapCount} (counted by colour, so it is an estimate)`);
+    setStatus($('pile-status'), parts.length
+      ? `Found ${parts.join(' and ')}. ` + (example ? 'This is an example; its parts list is already filled in.' : 'Now identify them.') +
+        (heapCount && !example ? ' For exact counts, spread the bricks out so none touch.' : '')
+      : 'No pieces found. Try a plainer background with more light.');
   }
 
   $('pile-file').addEventListener('change', async (e) => {
@@ -453,22 +472,35 @@
       if (sample && caps && caps.images) {
         setStatus($('pile-status'), 'Claude is reading the photo. This takes up to half a minute…');
         const blob = await toBlob(state.pile.img);
-        const r = await LEGO.recognize.claude(sample, blob, state.pile.boxes.length);
+        const r = await LEGO.recognize.claude(sample, blob, state.pile.boxes.length + state.pile.heaps.reduce((t, h) => t + h.estimate, 0));
         setInventory(r.rows, false);
         const n = INV.count(state.inv);
         setStatus($('pile-status'), `Identified ${n} piece${n === 1 ? '' : 's'}. Check the list below and fix anything that looks wrong.` + (r.notes ? ' Note: ' + r.notes : ''));
       } else if (!window.claude) {
-        if (!state.pile.boxes.length) throw { local: 'No pieces were found to identify.' };
-        const r = await LEGO.recognize.brickognize(state.pile.img, state.pile.boxes, (d, t) =>
+        const queries = state.pile.boxes.slice();
+        for (const h of state.pile.heaps) {
+          const groups = new Map();
+          for (const r of h.parts) {
+            const g = groups.get(r.color) || { qty: 0, best: null };
+            g.qty += r.count;
+            if (!g.best || r.area > g.best.area) g.best = r;
+            groups.set(r.color, g);
+          }
+          for (const [color, g] of groups) queries.push(Object.assign({}, g.best, { color, qty: g.qty, label: 'heap' }));
+        }
+        if (!queries.length) throw { local: 'No pieces were found to identify.' };
+        const r = await LEGO.recognize.brickognize(state.pile.img, queries, (d, t) =>
           setStatus($('pile-status'), `Identifying piece ${d} of ${t}…`));
         const unreachable = !r.rows.length && r.pieces.every((p) => p.error && p.error !== 'no match');
         if (unreachable) throw { local: 'Brickognize could not be reached from this page (' + (r.lastError || 'no answer') + '). Add parts by hand below.' };
         setInventory(r.rows, false);
-        state.review = r.pieces.filter((p) => !p.id || (p.score != null && p.score < LEGO.recognize.WEAK));
+        // Heap groups always get a check: their count is an estimate.
+        state.review = r.pieces.filter((p) => p.group || !p.id || (p.score != null && p.score < LEGO.recognize.WEAK));
         renderReview();
-        const named = r.pieces.length - r.failed;
+        const total = r.pieces.reduce((t, p) => t + p.qty, 0);
+        const namedN = r.pieces.filter((p) => p.id).reduce((t, p) => t + p.qty, 0);
         setStatus($('pile-status'),
-          `Named ${named} of ${r.pieces.length} piece${r.pieces.length === 1 ? '' : 's'}.` +
+          `Named ${namedN} of about ${total} piece${total === 1 ? '' : 's'}.` +
           (state.review.length ? ` ${state.review.length} need${state.review.length === 1 ? 's' : ''} a quick check under “Your parts”.` : ' Check the list below.'));
       } else {
         throw { local: 'Photo reading needs Claude, which is not available in this view. Add parts by hand below.' };
@@ -521,18 +553,20 @@
     box.innerHTML = '';
     list.forEach((p, k) => {
       const inLib = p.id && LEGO.LIB[p.id];
+      const who = p.group ? `<b>Heap · ${esc(colorName(p.color))}</b>, about ${p.qty}` : `<b>#${p.n}</b>`;
       const why = !p.id
-        ? `<b>#${p.n}</b> not recognised${p.error && p.error !== 'no match' ? ' (' + esc(p.error) + ')' : ''}`
-        : `<b>#${p.n}</b> best guess ${esc(p.id)} ${esc(p.name)}` + (p.score != null ? `, ${Math.round(p.score * 100)}% sure` : '') + '. It is in your list; change it here if wrong.';
+        ? `${who} not recognised${p.error && p.error !== 'no match' ? ' (' + esc(p.error) + ')' : ''}`
+        : `${who} best guess ${esc(p.id)} ${esc(p.name)}` + (p.score != null ? `, ${Math.round(p.score * 100)}% sure` : '') + '. In your list; fix the part or count here.';
       const guessOpt = p.id && !inLib ? `<option value="${esc(p.id)}">${esc(p.id)} · ${esc(p.name || 'guess')}</option>` : '';
       const altOpts = (p.alts || []).filter((a) => !LEGO.LIB[a.id]).map((a) => `<option value="${esc(a.id)}">${esc(a.id)} · ${esc(a.name)}</option>`).join('');
       const el = document.createElement('div');
       el.className = 'rv';
       el.innerHTML =
-        `<img alt="Piece ${p.n} from your photo" src="${p.crop || ''}">` +
+        `<img alt="${p.group ? 'Heap region' : 'Piece ' + p.n} from your photo" src="${p.crop || ''}">` +
         `<span class="why">${why}</span>` +
         `<select aria-label="Part for piece ${p.n}" data-k="${k}" data-f="id">${p.id ? '' : '<option value="">Choose part…</option>'}${guessOpt}${altOpts}${partOptions}</select>` +
-        `<select aria-label="Colour for piece ${p.n}" data-k="${k}" data-f="color">${colorOptions}</select>` +
+        `<div class="row" style="gap:6px;flex-wrap:nowrap"><select aria-label="Colour for piece ${p.n}" data-k="${k}" data-f="color" style="flex:1;min-width:0">${colorOptions}</select>` +
+        `<input type="number" min="1" max="999" value="${p.qty}" data-f="qty" aria-label="How many" title="How many"></div>` +
         `<span></span><div class="acts">` +
         (p.id ? `<button data-k="${k}" data-act="keep">Looks right</button><button class="primary" data-k="${k}" data-act="swap">Change</button>`
               : `<button class="primary" data-k="${k}" data-act="add">Add to list</button><button data-k="${k}" data-act="skip">Not LEGO</button>`) +
@@ -551,23 +585,30 @@
     const card = b.closest('.rv');
     const id = card.querySelector('[data-f=id]').value;
     const color = card.querySelector('[data-f=color]').value;
+    const qty = Math.max(1, Math.round(Number(card.querySelector('[data-f=qty]').value) || 1));
     const act = b.dataset.act;
     if ((act === 'add' || act === 'swap') && !id) {
       card.querySelector('[data-f=id]').focus();
       return;
     }
     let rows = state.inv.slice();
+    const guessRow = () => rows.find((x) => x.id === p.id && x.color === p.color);
     if (act === 'swap') {
-      // take one of the guessed part out, put the chosen one in
-      const r = rows.find((x) => x.id === p.id && x.color === p.color);
-      if (r) r.qty -= 1;
+      // take the guessed pieces out, put the chosen part in
+      const r = guessRow();
+      if (r) r.qty -= p.qty;
+      rows = rows.filter((x) => x.qty > 0);
+    }
+    if (act === 'keep' && qty !== p.qty) {
+      const r = guessRow();
+      if (r) r.qty = Math.max(0, r.qty + qty - p.qty);
       rows = rows.filter((x) => x.qty > 0);
     }
     if (act === 'add' || act === 'swap') {
-      rows.push({ id, color, qty: 1, name: LEGO.LIB[id] ? LEGO.LIB[id].label : '' });
+      rows.push({ id, color, qty, name: LEGO.LIB[id] ? LEGO.LIB[id].label : '' });
     }
     state.review.splice(k, 1);
-    if (act === 'add' || act === 'swap') setInventory(rows, false);
+    if (act !== 'skip') setInventory(rows, false);
     renderReview();
   });
   $('review-close').addEventListener('click', () => {

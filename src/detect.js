@@ -82,50 +82,138 @@
     mask = morph(morph(mask, true), true);
     mask = morph(morph(mask, false), false);
 
-    // Connected pieces, 4-neighbour flood fill.
-    const lab = new Int32Array(W * H);
-    const boxes = [];
-    const minArea = o.minArea || Math.max(20, (W * H) / 2500);
-    const stack = [];
-    let next = 0;
-    for (let p0 = 0; p0 < W * H; p0++) {
-      if (!mask[p0] || lab[p0]) continue;
-      next++;
-      let x0 = W, y0 = H, x1 = 0, y1 = 0, n = 0, sr = 0, sg = 0, sb = 0;
-      stack.push(p0);
-      lab[p0] = next;
-      while (stack.length) {
-        const p = stack.pop();
-        const x = p % W, y = (p / W) | 0;
-        n++;
-        const i = p * 4;
-        sr += px[i]; sg += px[i + 1]; sb += px[i + 2];
-        if (x < x0) x0 = x;
-        if (x > x1) x1 = x;
-        if (y < y0) y0 = y;
-        if (y > y1) y1 = y;
-        if (x > 0 && mask[p - 1] && !lab[p - 1]) { lab[p - 1] = next; stack.push(p - 1); }
-        if (x < W - 1 && mask[p + 1] && !lab[p + 1]) { lab[p + 1] = next; stack.push(p + 1); }
-        if (y > 0 && mask[p - W] && !lab[p - W]) { lab[p - W] = next; stack.push(p - W); }
-        if (y < H - 1 && mask[p + W] && !lab[p + W]) { lab[p + W] = next; stack.push(p + W); }
+    // Connected groups of set pixels, 4-neighbour flood fill. `within` limits the search to one
+    // label of an earlier pass (a heap), so the same routine splits heaps by colour.
+    function components(m, within, withinId) {
+      const lab = new Int32Array(W * H);
+      const out = [];
+      const stack = [];
+      let next = 0;
+      for (let p0 = 0; p0 < W * H; p0++) {
+        if (!m[p0] || lab[p0] || (within && within[p0] !== withinId)) continue;
+        next++;
+        let x0 = W, y0 = H, x1 = 0, y1 = 0, n = 0, sr = 0, sg = 0, sb = 0;
+        stack.push(p0);
+        lab[p0] = next;
+        while (stack.length) {
+          const p = stack.pop();
+          const x = p % W, y = (p / W) | 0;
+          n++;
+          const i = p * 4;
+          sr += px[i]; sg += px[i + 1]; sb += px[i + 2];
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+          for (const q of [x > 0 ? p - 1 : -1, x < W - 1 ? p + 1 : -1, y > 0 ? p - W : -1, y < H - 1 ? p + W : -1]) {
+            if (q >= 0 && m[q] && !lab[q] && (!within || within[q] === withinId)) {
+              lab[q] = next;
+              stack.push(q);
+            }
+          }
+        }
+        out.push({ id: next, x0, y0, x1, y1, n, rgb: [Math.round(sr / n), Math.round(sg / n), Math.round(sb / n)] });
       }
-      // Skip specks and anything that is most of the photo (a hand, a box lid).
-      if (n < minArea || n > W * H * 0.5) continue;
-      const pad = 3;
-      boxes.push({
-        x: Math.max(0, (x0 - pad) / S),
-        y: Math.max(0, (y0 - pad) / S),
-        w: Math.min(W0, (x1 - x0 + 1 + 2 * pad) / S),
-        h: Math.min(H0, (y1 - y0 + 1 + 2 * pad) / S),
-        area: n / (S * S),
-        rgb: [Math.round(sr / n), Math.round(sg / n), Math.round(sb / n)],
-      });
+      return { list: out, lab };
     }
+
+    const toBox = (c, pad) => ({
+      x: Math.max(0, (c.x0 - pad) / S),
+      y: Math.max(0, (c.y0 - pad) / S),
+      w: Math.min(W0, (c.x1 - c.x0 + 1 + 2 * pad) / S),
+      h: Math.min(H0, (c.y1 - c.y0 + 1 + 2 * pad) / S),
+      area: c.n / (S * S),
+      rgb: c.rgb,
+    });
+
+    const minArea = o.minArea || Math.max(20, (W * H) / 2500);
+    const first = components(mask);
+    // Drop specks and anything that fills nearly the whole photo (a hand, a box lid).
+    const blobs = first.list.filter((c) => c.n >= minArea && c.n <= W * H * 0.85);
+
+    // A heap is a blob far bigger than a single loose piece: bricks lying on top of each other.
+    const small = blobs.filter((c) => c.n < W * H * 0.03).map((c) => c.n).sort((a, b) => a - b);
+    const single = small.length ? small[small.length >> 1] : 0;
+    const heapMin = Math.max(W * H * 0.03, single * 6);
+    const boxes = [];
+    const heaps = [];
+    for (const c of blobs) {
+      if (c.n < heapMin) boxes.push(toBox(c, 3));
+      else heaps.push(splitHeap(c, first.lab));
+    }
+
+    // Split a heap by colour: every pixel gets a colour class, and each class is grouped on its
+    // own, so a red brick next to a blue one comes apart. Same-coloured bricks that touch stay
+    // together; their count is estimated from area against the typical region size.
+    function splitHeap(c, lab) {
+      const cls = new Uint8Array(W * H);
+      const keys = [];
+      const keyIndex = new Map();
+      for (let y = c.y0; y <= c.y1; y++) {
+        for (let x = c.x0; x <= c.x1; x++) {
+          const p = y * W + x;
+          if (lab[p] !== c.id) continue;
+          const k = colorClass(px[p * 4], px[p * 4 + 1], px[p * 4 + 2]);
+          if (!keyIndex.has(k)) {
+            keyIndex.set(k, keys.length + 1);
+            keys.push(k);
+          }
+          cls[p] = keyIndex.get(k);
+        }
+      }
+      const parts = [];
+      keys.forEach((key, ki) => {
+        const m = new Uint8Array(W * H);
+        for (let p = 0; p < W * H; p++) m[p] = cls[p] === ki + 1 ? 1 : 0;
+        // Erode once: the thin shading lines between bricks of one colour cut them apart.
+        const e = new Uint8Array(W * H);
+        for (let y = 1; y < H - 1; y++) {
+          for (let x = 1; x < W - 1; x++) {
+            const p = y * W + x;
+            e[p] = m[p] && m[p - 1] && m[p + 1] && m[p - W] && m[p + W] ? 1 : 0;
+          }
+        }
+        for (const r of components(e).list) if (r.n >= minArea * 0.6) parts.push(Object.assign(r, { color: key }));
+      });
+      // Typical visible area of one brick in this heap. Hidden bricks show as small fragments,
+      // so the upper-middle region size is a better guide than the median.
+      const areas = parts.map((r) => r.n).sort((a, b) => a - b);
+      const unit = areas.length ? areas[Math.floor(areas.length * 0.6)] : 1;
+      const median = areas.length ? areas[areas.length >> 1] : 1;
+      const kept = parts
+        .filter((r) => r.n >= median * 0.35)
+        .map((r) => Object.assign(toBox(r, 2), { color: r.color, count: Math.max(1, Math.round(r.n / unit)) }));
+      return { box: toBox(c, 3), parts: kept, estimate: kept.reduce((s, r) => s + r.count, 0) };
+    }
+
     // Reading order: top to bottom in rough rows, then left to right.
     const row = Math.max(1, H0 / 12);
     boxes.sort((a, b) => Math.floor(a.y / row) - Math.floor(b.y / row) || a.x - b.x);
-    return { boxes, width: W0, height: H0, background: bg };
+    return { boxes, heaps, width: W0, height: H0, background: bg };
   };
+
+  // Shading-tolerant colour class for one pixel, as a LEGO.COLORS key: hue decides for
+  // coloured plastic, brightness for white, greys and black.
+  function colorClass(r, g, b) {
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    const v = mx / 255;
+    const s = mx ? (mx - mn) / mx : 0;
+    if (v < 0.2) return 'black';
+    if (s < 0.2) return v > 0.62 ? 'white' : v > 0.42 ? 'lbg' : v > 0.28 ? 'dbg' : 'black';
+    let h;
+    if (mx === r) h = (60 * ((g - b) / (mx - mn)) + 360) % 360;
+    else if (mx === g) h = 60 * ((b - r) / (mx - mn)) + 120;
+    else h = 60 * ((r - g) / (mx - mn)) + 240;
+    if (h < 12 || h >= 342) return 'red';
+    if (h < 33) return v < 0.45 ? 'brown' : 'orange';
+    if (h < 68) return s < 0.4 && v > 0.7 ? 'tan' : 'yellow';
+    if (h < 90) return 'lime';
+    if (h < 170) return 'green';
+    if (h < 198) return 'azure';
+    if (h < 262) return 'blue';
+    return 'pink';
+  }
+  LEGO.detect.colorClass = colorClass;
 
   // One detected piece as its own square image (for recognisers that take one part per photo).
   LEGO.detect.crop = function crop(src, box, size) {

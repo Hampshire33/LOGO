@@ -62,7 +62,16 @@
   // in box order: { n, box, crop (data URL), id?, name?, color, score?, error? }. Pieces without
   // an id are the ones the user names by hand.
   REC.brickognize = async function brickognize(image, boxes, onProgress) {
-    const pieces = boxes.map((box, i) => ({ n: i + 1, box, color: INV.nearestColor(box.rgb) }));
+    // A box may carry `color` and `qty` (a colour group from a heap): its colour is already known
+    // and it stands for several bricks, so Brickognize only suggests the part.
+    const pieces = boxes.map((box, i) => ({
+      n: i + 1,
+      box,
+      qty: box.qty || 1,
+      group: !!box.color,
+      label: box.label || '',
+      color: box.color || LEGO.detect.colorClass(box.rgb[0], box.rgb[1], box.rgb[2]),
+    }));
     let lastError = '';
     let done = 0;
     const queue = pieces.slice();
@@ -84,7 +93,7 @@
           p.id = String(item.id);
           p.name = item.name || '';
           p.score = typeof item.score === 'number' ? item.score : null;
-          p.color = INV.colorKey(cName) || p.color;
+          if (!p.group) p.color = INV.colorKey(cName) || p.color;
           p.alts = (j.items || []).slice(1, 3).map((a) => ({ id: String(a.id), name: a.name || '' }));
         } catch (e) {
           p.error = e && e.message ? e.message : String(e);
@@ -97,7 +106,7 @@
     await Promise.all([worker(), worker(), worker()]);
     const named = pieces.filter((p) => p.id);
     return {
-      rows: INV.from(named.map((p) => ({ id: p.id, name: p.name, color: p.color, qty: 1 }))),
+      rows: INV.from(named.map((p) => ({ id: p.id, name: p.name, color: p.color, qty: p.qty }))),
       pieces,
       failed: pieces.length - named.length,
       weak: named.filter((p) => p.score != null && p.score < REC.WEAK).length,
