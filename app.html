@@ -128,8 +128,8 @@
   col.c-pic { width: 58px; } col.c-col { width: 30%; } col.c-qty { width: 82px; } col.c-x { width: 48px; }
   td select { width: 100%; }
   @media (max-width: 560px) {
-    table { min-width: 0; }
-    col.c-pic, td.pic, th:first-child { display: none; }
+    #parts-table { min-width: 0; }
+    #parts-table col.c-pic, #parts-table td.pic, #parts-table th:first-child { display: none; }
     col.c-col { width: 34%; } col.c-qty { width: 70px; } col.c-x { width: 42px; }
     th, td { padding-inline: 6px; }
   }
@@ -182,6 +182,12 @@
   .needs .sum { font-size: 14px; }
   .needs .sum b { font-weight: 600; }
   .tctl { display: grid; gap: 8px; }
+  .partsbox summary { cursor: pointer; font-size: 14px; color: var(--link); padding-block: 4px; }
+  .partsbox[open] summary { margin-bottom: 10px; }
+  .partsbox { display: grid; gap: 12px; }
+  .frame.target { aspect-ratio: 4 / 3; }
+  button.big { font-size: 16px; padding: 12px 20px; min-height: 46px; }
+  .designopts { gap: 6px 18px; }
   .tpl summary { cursor: pointer; font-size: 13px; color: var(--link); padding-block: 2px; }
   .tpl[open] summary { margin-bottom: 8px; }
   .aidesign { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
@@ -218,66 +224,29 @@
       </svg>
       <h1>PileBuild</h1>
     </div>
-    <p class="tag">Photograph your loose bricks. Get a parts list, ideas for what to build with them, and step-by-step instructions drawn from real LEGO parts.</p>
+    <p class="tag">Photograph your bricks, then photograph what you want to build. PileBuild designs it as a real 3D LEGO model with step-by-step instructions.</p>
   </header>
 
   <div class="cols">
     <div class="left">
-      <!-- 1 photos -->
-      <section class="panel" aria-labelledby="h-photos">
-        <div class="head"><span class="num">1</span><h2 id="h-photos">Your photos</h2></div>
-        <div class="slots">
-          <div class="slot">
-            <div class="row" style="justify-content: space-between"><h3>Loose bricks</h3><span class="chip example" id="pile-example">Example pile</span></div>
-            <div class="frame"><canvas id="pile-canvas" width="1200" height="900" aria-label="Photo of loose bricks with detected pieces outlined"></canvas></div>
-            <div class="row">
-              <label class="btn" for="pile-file">Take or choose photo</label>
-              <input type="file" id="pile-file" accept="image/*" capture="environment">
-              <button id="identify" class="primary">Identify parts</button>
-            </div>
-            <div class="row" id="reader-opts" hidden style="gap: 4px 16px">
-              <label class="toggle small"><input type="checkbox" id="lots"> Lots of small pieces (reads in parts, costs more)</label>
-              <label class="toggle small" id="precise-row"><input type="checkbox" id="precise"> Precise read (about 3× the cost)</label>
-            </div>
-            <p class="status" id="pile-status"></p>
+      <!-- 1 your bricks -->
+      <section class="panel" aria-labelledby="h-bricks">
+        <div class="head"><span class="num">1</span><h2 id="h-bricks">Your bricks</h2></div>
+        <div class="slot">
+          <div class="row" style="justify-content: space-between"><h3>Photo of your bricks</h3><span class="chip example" id="pile-example">Example pile</span></div>
+          <div class="frame"><canvas id="pile-canvas" width="1200" height="900" aria-label="Photo of your bricks with detected pieces outlined"></canvas></div>
+          <div class="row">
+            <label class="btn" for="pile-file">Take or choose photo</label>
+            <input type="file" id="pile-file" accept="image/*" capture="environment">
+            <button id="identify" class="primary">Identify bricks</button>
           </div>
-          <div class="slot">
-            <div class="row" style="justify-content: space-between"><h3>What to build</h3><span class="chip">Optional</span></div>
-            <div class="frame">
-              <canvas id="target-canvas" width="800" height="600" aria-label="Photo of what you want to build"></canvas>
-              <div class="empty" id="target-empty">A photo of a pet, a car, a house… and we design it from your pile.</div>
-            </div>
-            <div class="row">
-              <label class="btn" for="target-file">Add photo</label>
-              <input type="file" id="target-file" accept="image/*">
-              <button id="target-clear" class="link" hidden>Remove</button>
-            </div>
-            <div class="row" id="target-colors" aria-label="Main colours in the photo"></div>
-            <div class="tctl" id="target-ctl" hidden>
-              <div class="row" id="ai-go-row" hidden>
-                <button id="ai-go" class="primary">Design this with AI</button>
-                <span class="small muted">Claude looks at this photo and designs it from your pile.</span>
-              </div>
-              <details id="tpl" class="tpl">
-              <summary id="tpl-sum">Or a free quick template (car, house, tree, animal)</summary>
-              <div class="tctl">
-              <span class="small muted" id="kind-q">What is it? Tap one and a ready-made LEGO design is fitted to your parts.</span>
-              <div class="row kinds" id="kind-chips" role="group" aria-label="What the photo shows"></div>
-              <label for="pic-width" id="size-row">Size: <b id="pic-width-v"></b> studs long</label>
-              <input type="range" id="pic-width" min="6" max="28" step="1" value="16">
-              <label class="toggle small"><input type="checkbox" id="pic-mine" checked> Only colours I have</label>
-              </div>
-              </details>
-            </div>
+          <div class="row" id="reader-opts" hidden style="gap: 4px 16px">
+            <label class="toggle small"><input type="checkbox" id="lots"> Lots of small pieces (reads in parts, costs more)</label>
+            <label class="toggle small" id="precise-row"><input type="checkbox" id="precise"> Precise read (about 3× the cost)</label>
           </div>
+          <p class="status" id="pile-status"></p>
         </div>
-        <p class="small muted" id="reader-note"></p>
-        <p class="small muted">Tip: a sharp, well-lit photo from above works best. A phone photo is read in several parts, so fine detail counts.</p>
-      </section>
 
-      <!-- 2 parts -->
-      <section class="panel" aria-labelledby="h-parts">
-        <div class="head"><span class="num">2</span><h2 id="h-parts">Your parts</h2></div>
         <div class="totals" id="totals"></div>
         <div class="review" id="review" hidden>
           <div class="row" style="justify-content: space-between">
@@ -287,41 +256,55 @@
           <p class="small muted">Numbers match the boxes on your photo; heap rows are one card per colour with an estimated count. Pick the right part and count, then add it to your list.</p>
           <div class="review-list" id="review-list"></div>
         </div>
-        <div class="tablewrap">
-          <table>
-            <colgroup><col class="c-pic"><col><col class="c-col"><col class="c-qty"><col class="c-x"></colgroup>
-            <thead><tr><th></th><th>Part</th><th>Colour</th><th>Qty</th><th></th></tr></thead>
-            <tbody id="parts-body"></tbody>
-          </table>
+        <details class="partsbox" id="partsbox">
+          <summary>See and edit the parts list</summary>
+          <div class="tablewrap">
+            <table id="parts-table">
+              <colgroup><col class="c-pic"><col><col class="c-col"><col class="c-qty"><col class="c-x"></colgroup>
+              <thead><tr><th></th><th>Part</th><th>Colour</th><th>Qty</th><th></th></tr></thead>
+              <tbody id="parts-body"></tbody>
+            </table>
+          </div>
+          <div class="row">
+            <button id="add-row">Add a part</button>
+            <button id="clear-rows" class="link">Clear list</button>
+          </div>
+          <p class="small muted" id="parts-note"></p>
+        </details>
+        <p class="small muted" id="reader-note"></p>
+      </section>
+
+      <!-- 2 what to build -->
+      <section class="panel" aria-labelledby="h-target">
+        <div class="head"><span class="num">2</span><h2 id="h-target">What to build</h2></div>
+        <div class="frame target">
+          <canvas id="target-canvas" width="800" height="600" aria-label="Photo of what you want to build"></canvas>
+          <div class="empty" id="target-empty">A photo of anything: a toy, a car, a pet, a house. Claude works out what it is and designs it in LEGO.</div>
         </div>
         <div class="row">
-          <button id="add-row">Add a part</button>
-          <button id="clear-rows" class="link">Clear list</button>
+          <label class="btn" for="target-file">Take or choose photo</label>
+          <input type="file" id="target-file" accept="image/*">
+          <button id="target-clear" class="link" hidden>Remove</button>
         </div>
-        <p class="small muted" id="parts-note"></p>
+        <div class="row designopts">
+          <label class="toggle small"><input type="checkbox" id="design-mine"> Only my bricks</label>
+          <label class="small">Size <select id="design-size" aria-label="Model size">
+            <option value="max" selected>Use most of my bricks</option><option value="medium">Medium (~60 parts)</option><option value="small">Small (~30 parts)</option>
+          </select></label>
+        </div>
+        <div class="row">
+          <button id="ai-design" class="primary big" disabled>Design it in 3D</button>
+          <span class="small muted" id="design-cost"></span>
+        </div>
+        <p class="status" id="design-status"></p>
+        <p class="small muted" id="design-off" hidden>Designing needs Claude: open PileBuild on the public site (with its AI server) or on claude.ai.</p>
       </section>
     </div>
 
     <div class="right">
-      <!-- 3 build -->
-      <section class="panel" aria-labelledby="h-build">
-        <div class="head"><span class="num">3</span><h2 id="h-build">What to build</h2></div>
-        <div class="aidesign" id="aidesign" hidden>
-            <h3>Design with AI</h3>
-            <p class="small muted">Claude designs a real LEGO model of your “What to build” photo, or of what you type here, from your parts first. Takes about half a minute to two minutes.</p>
-            <input type="text" id="want" maxlength="120" placeholder="e.g. a red fire truck, a sitting cat, my house" aria-label="What to build">
-            <div class="row">
-              <button id="ai-design" class="primary">Design it</button>
-              <label class="toggle small"><input type="checkbox" id="design-mine"> Only my parts</label>
-              <label class="small">Size <select id="design-size" aria-label="Model size">
-                <option value="max" selected>Use most of my pile</option><option value="medium">Medium (~60 parts)</option><option value="small">Small (~30 parts)</option>
-              </select></label>
-              <span class="small muted" id="design-cost">about 5-25 US cents</span>
-            </div>
-            <p class="status" id="design-status"></p>
-            <div id="design-slot"></div>
-          </div>
-
+      <!-- 3 your model -->
+      <section class="panel" aria-labelledby="h-model">
+        <div class="head"><span class="num">3</span><h2 id="h-model">Your model</h2><span class="chip example" id="model-example" style="margin-left:auto">Example</span></div>
         <div class="player">
           <div class="stage"><canvas id="film" width="1080" height="1920" aria-label="Animated building instructions"></canvas></div>
           <div class="controls">
@@ -342,22 +325,9 @@
           <div class="problems" id="problems" hidden></div>
           <div class="needs" id="needs"></div>
         </div>
-
-        <div class="sugs">
-          <h3>From your parts</h3>
-          <div id="pic-slot"></div>
-          <div id="gen-slot"></div>
-          <div id="ai-block" class="ideas">
-            <div class="row">
-              <button id="ask-ideas" class="primary">Ask Claude for ideas</button>
-              <label class="toggle"><input type="checkbox" id="only-mine" checked> Only my parts</label>
-            </div>
-            <p class="status" id="ai-status"></p>
-            <div id="ideas" class="ideas"></div>
-          </div>
-          <p class="small muted" id="ai-off" hidden>Add a “What to build” photo above to get a brick picture of it. Claude-designed 3D models work in the claude.ai version of this page.</p>
-          <h3 style="margin-top: 6px">Ready-made models</h3>
-          <div id="lib-list" class="sugs"></div>
+        <div class="sugs" id="history-box" hidden>
+          <h3>Your designs</h3>
+          <div id="design-slot" class="sugs"></div>
         </div>
       </section>
       <textarea id="json-out" hidden readonly aria-label="Model file"></textarea>
@@ -672,32 +642,21 @@
     btn.disabled = false;
   });
 
-  // ---------------------------------------------------------------- 1b. target photo
+  // ---------------------------------------------------------------- 2. what to build (photo)
 
   $('target-file').addEventListener('change', async (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
     try {
       const img = await loadImage(f);
-      state.target = { img, blob: null };
+      state.target = { img };
       paint($('target-canvas'), img);
       $('target-empty').hidden = true;
       $('target-clear').hidden = false;
-      const cols = LEGO.subjectColors(img, 6);
-      state.target.colors = cols.map((c) => c.key);
-      state.kind = null;
-      renderKinds();
-      $('target-colors').innerHTML = '<span class="small muted">Main colours:</span>' +
-        cols.map((c) => `<span class="chip">${swatch(c.key)}${colorName(c.key)}</span>`).join('');
-      $('ask-ideas').textContent = 'Design it from my parts';
-      $('target-ctl').hidden = false;
-      $('ai-go-row').hidden = !CFG.aiEndpoint;
-      $('tpl').open = !CFG.aiEndpoint;
-      $('tpl-sum').textContent = CFG.aiEndpoint ? 'Or a free quick template (car, house, tree, animal)' : 'Ready-made designs (car, house, tree, animal)';
-      state.picWidth = null;
-      renderSuggestions(false, 'pic');
+      setStatus($('design-status'), '');
+      updateDesignButton();
     } catch (err) {
-      $('target-colors').innerHTML = '<span class="status err">That file could not be opened as a photo.</span>';
+      setStatus($('design-status'), 'That file could not be opened as a photo.', true);
     }
     e.target.value = '';
   });
@@ -706,11 +665,7 @@
     $('target-canvas').getContext('2d').clearRect(0, 0, 800, 600);
     $('target-empty').hidden = false;
     $('target-clear').hidden = true;
-    $('target-colors').innerHTML = '';
-    $('ask-ideas').textContent = 'Ask Claude for ideas';
-    $('target-ctl').hidden = true;
-    state.kind = null;
-    renderSuggestions(state.choice && state.choice.key === 'pic');
+    updateDesignButton();
   });
 
   // ---------------------------------------------------------------- 2. parts list
@@ -792,10 +747,7 @@
   function setInventory(rows, example) {
     state.inv = INV.from(rows);
     state.invExample = example;
-    state.ideas = [];
-    state.designs = {};
     renderParts();
-    renderSuggestions(true);
     if (LEGO.designAI) designHint();
   }
 
@@ -882,7 +834,7 @@
   });
   $('clear-rows').addEventListener('click', () => setInventory([], false));
 
-  // ---------------------------------------------------------------- 3. suggestions
+  // ---------------------------------------------------------------- 3. your designs
 
   function sugButton(key, title, detail, extra) {
     const b = document.createElement('button');
@@ -893,211 +845,8 @@
     return b;
   }
 
-  // ---------------------------------------------------------------- design from the photo
-
-  const KINDS = LEGO.designs.list.concat([{ key: 'picture', title: 'Flat picture', hint: 'a brick mosaic of the outline' }]);
-  const SIZES = { car: [8, 14, 2, 10], house: [6, 12, 2, 8], picture: [6, 28, 1, 16] };
-
-  function renderKinds() {
-    const box = $('kind-chips');
-    box.innerHTML = KINDS.map((k) => `<button type="button" data-kind="${k.key}" aria-pressed="${state.kind === k.key}" title="${esc(k.hint)}">${esc(k.title)}</button>`).join('');
-    const sz = SIZES[state.kind];
-    $('size-row').hidden = $('pic-width').hidden = !sz;
-    if (sz) {
-      const el = $('pic-width');
-      el.min = sz[0];
-      el.max = sz[1];
-      el.step = sz[2];
-      if (!state.picWidth || state.picWidth < sz[0] || state.picWidth > sz[1]) state.picWidth = sz[3];
-      el.value = String(state.picWidth);
-      $('pic-width-v').textContent = state.picWidth;
-    }
-  }
-  $('kind-chips').addEventListener('click', (e) => {
-    const b = e.target.closest('[data-kind]');
-    if (!b) return;
-    state.kind = b.dataset.kind;
-    state.picWidth = null;
-    renderKinds();
-    renderSuggestions(false, 'pic');
-  });
-
-  // Colours for the design: the photo's main colours, moved to the nearest colours you own
-  // when "Only colours I have" is on.
-  function designColors() {
-    const photo = (state.target.colors || []).filter((k) => LEGO.COLORS[k]);
-    const owned = [...new Set(state.inv.filter(INV.usable).map((r) => r.color))];
-    const near = (k) => {
-      if (!$('pic-mine').checked || !owned.length) return k;
-      const c = LEGO.COLORS[k].rgb;
-      let best = owned[0], bd = Infinity;
-      for (const o of owned) {
-        const q = LEGO.COLORS[o].rgb;
-        const d = (q[0] - c[0]) ** 2 * 0.3 + (q[1] - c[1]) ** 2 * 0.59 + (q[2] - c[2]) ** 2 * 0.11;
-        if (d < bd) { bd = d; best = o; }
-      }
-      return best;
-    };
-    const main = near(photo[0] || 'red');
-    const second = photo.slice(1).map(near).find((k) => k !== main) || null;
-    return { main, second };
-  }
-
-  function designFromPhoto() {
-    if (state.kind === 'picture') {
-      const r = LEGO.brickPicture(state.target.img, state.inv, { width: state.picWidth || undefined, onlyMine: $('pic-mine').checked });
-      const f = LEGO.fit(LEGO.realColors(r.model).model, state.inv, { swapColors: false });
-      return {
-        model: Object.assign(f.model, { title: 'Brick Picture' }),
-        title: 'Flat brick picture of your photo',
-        detail: `A standing wall ${r.width} studs wide in the photo's colours: a mosaic of the outline, not a 3D model.`,
-        missing: f.missing.reduce((t, m) => t + m.qty, 0),
-      };
-    }
-    const colors = designColors();
-    const kind = KINDS.find((k) => k.key === state.kind);
-    const base = LEGO.designs.build(state.kind, { length: state.picWidth || undefined, colors });
-    const real = LEGO.realColors(base);
-    const f = LEGO.fit(real.model, state.inv, { swapColors: $('pic-mine').checked });
-    const model = Object.assign(f.model, { title: 'Your ' + kind.title });
-    return {
-      model,
-      title: 'Your ' + kind.title.toLowerCase() + ' from the photo',
-      detail: `A real LEGO ${kind.title.toLowerCase()} (${kind.hint}) in ${LEGO.COLORS[colors.main].name}${colors.second && state.kind === 'house' ? ' with a ' + LEGO.COLORS[colors.second].name + ' roof' : ''}. ` +
-        (f.changes ? `${f.changes} part${f.changes === 1 ? '' : 's'} swapped for ones you own. ` : ''),
-      missing: f.missing.reduce((t, m) => t + m.qty, 0),
-    };
-  }
-
-  function renderSuggestions(autoPick, pickKey) {
-    // a design of what the target photo shows
-    const ps = $('pic-slot');
-    ps.innerHTML = '';
-    let pic = null;
-    if (state.target && !state.kind) {
-      ps.innerHTML = '<p class="small muted">Tap what your photo shows (Car, House, Tree, Animal) and a real LEGO design of it appears here, fitted to your parts.</p>';
-    } else if (state.target) {
-      const d = designFromPhoto();
-      pic = d.model;
-      const miss = d.missing;
-      const total = d.model.steps.flat().length;
-      const b = sugButton('pic', d.title, esc(d.detail) + ' ' +
-        (miss ? `Needs ${total} pieces: ${total - miss} from your pile, ${miss} to get.` : `Needs ${total} pieces, all from your pile.`),
-        `<span class="chip ${miss ? 'warn' : 'good'}">${total} parts</span>`);
-      b.addEventListener('click', () => choose('pic', pic));
-      ps.appendChild(b);
-    }
-
-    // generated from your parts
-    const gen = INV.generate(state.inv);
-    const gs = $('gen-slot');
-    gs.innerHTML = '';
-    let first = null;
-    if (gen) {
-      const c = LEGO.checkModel(gen);
-      const n = gen.steps.flat().length;
-      const b = sugButton('gen', gen.title, `A sturdy striped block from ${n} of your bricks and plates, joints staggered like brickwork. Works on any pile.`,
-        `<span class="chip ${c.problems.length ? 'bad' : 'good'}">${n} parts</span>`);
-      b.addEventListener('click', () => choose('gen', gen));
-      gs.appendChild(b);
-      first = ['gen', gen];
-    } else {
-      gs.innerHTML = '<p class="small muted">Add a few bricks or plates (1 or 2 studs wide) to get a build from your own parts.</p>';
-    }
-
-    // Claude ideas
-    const box = $('ideas');
-    box.innerHTML = '';
-    state.ideas.forEach((idea, i) => {
-      const done = state.designs[idea.title];
-      const extra = done ? `<span class="chip ${done.check.ok ? 'good' : 'warn'}">${done.check.parts} parts</span>` : `<span class="chip">about ${esc(idea.parts || '?')} parts</span>`;
-      const b = sugButton('idea' + i, idea.title, esc(idea.pitch || '') + (done ? '' : ' <b>Tap to design it.</b>'), extra);
-      b.addEventListener('click', () => (done ? choose('idea' + i, done.model, done.check) : designIdea(i)));
-      box.appendChild(b);
-    });
-
-    // library models with coverage
-    const list = $('lib-list');
-    list.innerHTML = '';
-    Object.entries(window.MODELS).forEach(([k, model]) => {
-      const cov = INV.coverage(state.inv, model);
-      const pe = Math.round((100 * cov.exact) / cov.total);
-      const ps = Math.round((100 * cov.shape) / cov.total);
-      const miss = cov.missing.reduce((s, m) => s + m.qty, 0);
-      const b = sugButton('lib-' + k, model.title,
-        `You have ${pe}% of the exact parts and ${ps}% of the shapes (in any colour). ${miss ? `Missing ${miss} pieces.` : 'You can build it.'}`,
-        `<span class="chip ${pe === 100 ? 'good' : ''}">${cov.total} parts</span><span class="bar" aria-hidden="true"><i style="width:${ps}%"></i><b style="width:${pe}%"></b></span>`);
-      b.addEventListener('click', () => choose('lib-' + k, model));
-      list.appendChild(b);
-      if (cov.missing.length) {
-        const d = document.createElement('details');
-        d.innerHTML = `<summary>Missing parts for ${esc(model.title)}</summary><div class="miss">` +
-          cov.missing.map((m) => `<span class="chip">${swatch(m.color)}<span class="pno">${m.qty}× ${m.id}</span> ${esc(LEGO.LIB[m.id].label)}</span>`).join('') + '</div>';
-        list.appendChild(d);
-      }
-    });
-
-    if (pickKey === 'pic' && pic) {
-      choose('pic', pic);
-    } else if (state.choice && state.choice.key === 'pic' && pic) {
-      choose('pic', pic, null, true);
-    } else if (autoPick || !state.choice) {
-      if (pic) choose('pic', pic);
-      else if (first) choose(first[0], first[1]);
-      else choose('lib-cat', window.MODELS.cat);
-    } else {
-      markChoice();
-    }
-  }
-
   function markChoice() {
     document.querySelectorAll('.sug').forEach((b) => b.setAttribute('aria-pressed', state.choice && b.dataset.key === state.choice.key ? 'true' : 'false'));
-  }
-
-  // ---------------------------------------------------------------- Claude ideas and designs
-
-  $('ask-ideas').addEventListener('click', async () => {
-    if (!sample) return;
-    const usable = state.inv.filter(INV.usable);
-    if (!usable.length) {
-      setStatus($('ai-status'), 'Add some parts first, from a photo or by hand.', true);
-      return;
-    }
-    const btn = $('ask-ideas');
-    btn.disabled = true;
-    setStatus($('ai-status'), state.target ? 'Claude is looking at your photo and your parts…' : 'Claude is thinking about your parts…');
-    try {
-      const target = state.target ? (state.target.blob = state.target.blob || (await toBlob(state.target.img, 1200))) : null;
-      state.ideas = await LEGO.ai.ideas(sample, state.inv, target);
-      state.designs = {};
-      setStatus($('ai-status'), state.ideas.length ? 'Pick an idea and Claude designs it, checking every part against the rules as it goes.' : 'No ideas came back. Try again.');
-      renderSuggestions(false);
-    } catch (e) {
-      setStatus($('ai-status'), claudeError(e), true);
-    }
-    btn.disabled = false;
-  });
-
-  let designing = null;
-  async function designIdea(i) {
-    const idea = state.ideas[i];
-    if (!idea || !sample) return;
-    if (designing) designing.abort();
-    designing = new AbortController();
-    setStatus($('ai-status'), `Designing “${idea.title}”. This can take a minute or two…`);
-    try {
-      const target = state.target ? (state.target.blob = state.target.blob || (await toBlob(state.target.img, 1200))) : null;
-      const r = await LEGO.ai.design(sample, state.inv, idea, target, { onlyMine: $('only-mine').checked, signal: designing.signal });
-      state.designs[idea.title] = r;
-      setStatus($('ai-status'), r.check.ok
-        ? `“${r.model.title}” is ready: ${r.check.parts} parts in ${r.check.steps} steps, all checked.`
-        : `“${r.model.title}” is ready, with problems listed under the player.` + (r.dropped.length ? ` ${r.dropped.length} unknown parts were left out.` : ''));
-      renderSuggestions(false);
-      choose('idea' + i, r.model, r.check);
-    } catch (e) {
-      setStatus($('ai-status'), claudeError(e), true);
-    }
-    designing = null;
   }
 
   // ---------------------------------------------------------------- player
@@ -1126,77 +875,95 @@
     loadFilm(keepTime);
   }
 
-  // ---------------------------------------------------------------- design with AI (site server)
+  // ---------------------------------------------------------------- design it in 3D
 
   let aiDesigns = [];
+
+  // Which designer this page can use: the site's AI server, or Claude on claude.ai.
+  const designer = () => (CFG.aiEndpoint ? 'server' : sample && caps && caps.images ? 'claude.ai' : null);
+
+  function updateDesignButton() {
+    const d = designer();
+    $('ai-design').disabled = !state.target || !d;
+    $('design-off').hidden = !!d;
+    $('ai-design').textContent = state.target ? 'Design it in 3D' : 'Add a photo first';
+  }
+
   $('ai-design').addEventListener('click', async () => {
-    const want = $('want').value.trim();
-    if (!want && !state.target) {
-      setStatus($('design-status'), 'Add a “What to build” photo, or type what you want.', true);
-      $('want').focus();
-      return;
-    }
+    if (!state.target || !designer()) return;
     const btn = $('ai-design');
     btn.disabled = true;
     const t0 = Date.now();
     const meter = LEGO.identify.meter();
+    const inventory = state.inv.filter(INV.usable).map((r) => ({ id: r.id, color: r.color, qty: r.qty }));
+    const onlyMine = $('design-mine').checked;
+    const size = $('design-size').value;
     try {
-      const image = state.target ? await blobToB64(await toBlob(state.target.img, 1000)) : null;
-      const inventory = state.inv.filter(INV.usable).map((r) => ({ id: r.id, color: r.color, qty: r.qty }));
-      const r = await LEGO.designAI.viaServer(async (body) => {
-        const res = await fetch(CFG.aiEndpoint.replace(/\/$/, '') + '/v1/design', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
+      let r;
+      if (designer() === 'server') {
+        const image = await blobToB64(await toBlob(state.target.img, 1000));
+        r = await LEGO.designAI.viaServer(async (body) => {
+          const res = await fetch(CFG.aiEndpoint.replace(/\/$/, '') + '/v1/design', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok) throw Object.assign(new Error(j.error || 'HTTP ' + res.status), { code: j.code, status: res.status });
+          meter.add(j.usage, j.model);
+          return j;
+        }, {
+          image, inventory, onlyMine, size,
+          onRound: (n) => setStatus($('design-status'), n === 1 ? 'Claude is looking at your photo and designing it…' : 'Claude is fixing what the check found…'),
         });
-        const j = await res.json().catch(() => ({}));
-        if (!res.ok) throw Object.assign(new Error(j.error || 'HTTP ' + res.status), { code: j.code, status: res.status });
-        meter.add(j.usage, j.model);
-        return j;
-      }, {
-        image, want, inventory, onlyMine: $('design-mine').checked, size: $('design-size').value,
-        onRound: (n) => setStatus($('design-status'), n === 1 ? 'Claude is designing your model…' : 'Claude is fixing a few parts the check found…'),
-      });
+      } else {
+        setStatus($('design-status'), 'Claude is looking at your photo and designing it…');
+        const blob = await toBlob(state.target.img, 1200);
+        const idea = { title: 'the subject of the photo', pitch: `Work out what the photo shows and design it. Aim for about ${LEGO.designAI.targetParts(inventory, size)} parts.` };
+        const d = await LEGO.ai.design(sample, state.inv, idea, blob, { onlyMine });
+        r = { model: d.model, check: { ok: d.check.ok, problems: d.check.problems || [] } };
+      }
       r.model = LEGO.realColors(r.model).model;
       const cov = INV.coverage(state.inv, r.model);
       const miss = cov.missing.reduce((t, m) => t + m.qty, 0);
       aiDesigns.unshift({ model: r.model, check: r.check, cost: meter.usd, miss, total: cov.total });
-      aiDesigns = aiDesigns.slice(0, 4);
+      aiDesigns = aiDesigns.slice(0, 6);
       renderAiDesigns();
       choose('ai0', r.model);
+      $('model-example').hidden = true;
+      $('h-model').scrollIntoView({ behavior: 'smooth', block: 'start' });
       setStatus($('design-status'),
-        `“${r.model.title}”: ${cov.total} parts in ${r.model.steps.length} steps, ` +
-        (r.check.ok ? 'checked: nothing overlaps or floats. ' : `${r.check.problems.length} problems left (listed under the player). `) +
-        (miss ? `${cov.total - miss} from your pile, ${miss} to get. ` : 'all from your pile. ') +
-        `Took ${Math.round((Date.now() - t0) / 1000)} s and cost about ${costText(meter.usd)}.`);
+        `Claude designed “${r.model.title}”: ${cov.total} parts in ${r.model.steps.length} steps` +
+        (miss ? `, ${cov.total - miss} from your bricks and ${miss} to get.` : ', all from your bricks.') +
+        (r.check.ok ? ' Checked: nothing overlaps or floats.' : ` ${r.check.problems.length} problems left.`) +
+        ` Took ${Math.round((Date.now() - t0) / 1000)} s` + (meter.reads ? `, cost about ${costText(meter.usd)}.` : '.'));
     } catch (e) {
-      setStatus($('design-status'), (e && e.message === 'no model came back') ? 'No model came back. Try again, or describe it differently.' : serverError(e), true);
+      setStatus($('design-status'), e && e.message === 'no model came back' ? 'No model came back. Try again, or try a clearer photo.' : designer() === 'server' ? serverError(e) : claudeError(e), true);
     }
-    btn.disabled = false;
+    updateDesignButton();
   });
 
   function designHint() {
     const inv = state.inv.filter(INV.usable);
     const n = LEGO.designAI.targetParts(inv, $('design-size').value);
     const cents = n > 90 ? '15-35' : n > 50 ? '8-25' : '5-15';
-    $('design-cost').textContent = `aims for ~${n} parts · about ${cents} US cents`;
+    $('design-cost').textContent = designer() === 'server' ? `aims for ~${n} parts · about ${cents} US cents` : `aims for ~${n} parts`;
   }
   $('design-size').addEventListener('change', designHint);
-  $('ai-go').addEventListener('click', () => {
-    $('aidesign').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    $('ai-design').click();
-  });
 
   function renderAiDesigns() {
     const box = $('design-slot');
     box.innerHTML = '';
+    $('history-box').hidden = !aiDesigns.length;
     aiDesigns.forEach((d, i) => {
       const b = sugButton('ai' + i, d.model.title,
-        `${d.total} parts${d.miss ? `, ${d.miss} to get` : ', all from your pile'} · designed by Claude for about ${costText(d.cost)}`,
+        `${d.total} parts${d.miss ? `, ${d.miss} to get` : ', all from your bricks'}` + (d.cost ? ` · about ${costText(d.cost)}` : ''),
         `<span class="chip ${d.check.ok ? (d.miss ? 'warn' : 'good') : 'bad'}">${d.check.ok ? 'checked' : 'check failed'}</span>`);
       b.addEventListener('click', () => choose('ai' + i, d.model));
       box.appendChild(b);
     });
+    // keys shift as new designs arrive: keep the highlight on the shown model
+    markChoice();
   }
 
   function blobToB64(blob) {
@@ -1212,7 +979,10 @@
   function renderNeeds(model) {
     const cov = INV.coverage(state.inv, model);
     const have = new Map(state.inv.map((r) => [r.id + '|' + r.color, r.qty]));
-    const need = INV.needs(model).sort((a, b) => b.qty - a.qty);
+    // parts to get first, then by quantity
+    const haveOf = (n) => (new Map(state.inv.map((r) => [r.id + '|' + r.color, r.qty])).get(n.id + '|' + n.color) || 0);
+    const need = INV.needs(model).map((n) => Object.assign(n, { short: haveOf(n) < n.qty })).sort((a, b) => b.short - a.short || b.qty - a.qty);
+    const SHOW = 8;
     const miss = cov.missing.reduce((t, m) => t + m.qty, 0);
     const steps = model.steps.length;
     $('needs').innerHTML =
@@ -1220,11 +990,17 @@
       `<p class="sum"><b>${cov.total}</b> pieces in <b>${steps}</b> steps · you have <b>${cov.exact}</b>` +
       (miss ? ` · <b style="color:var(--bad)">${miss}</b> to get` : ' · nothing missing') + '</p>' +
       '<div class="tablewrap"><table><thead><tr><th>Part</th><th>Colour</th><th class="n">Need</th><th class="n">Have</th></tr></thead><tbody>' +
-      need.map((n) => {
+      need.map((n, i) => {
         const h = have.get(n.id + '|' + n.color) || 0;
-        return `<tr class="${h < n.qty ? 'short' : ''}"><td><span class="pno">${n.id}</span> ${esc(LEGO.LIB[n.id].label)}</td>` +
+        return `<tr class="${h < n.qty ? 'short' : ''}"${i >= SHOW ? ' data-more hidden' : ''}><td><span class="pno">${n.id}</span> ${esc(LEGO.LIB[n.id].label)}</td>` +
           `<td>${swatch(n.color)} ${esc(colorName(n.color))}</td><td class="n">${n.qty}</td><td class="n">${Math.min(h, 999)}</td></tr>`;
-      }).join('') + '</tbody></table></div>';
+      }).join('') + '</tbody></table></div>' +
+      (need.length > SHOW ? `<button class="link" id="needs-more">Show all ${need.length} kinds of part</button>` : '');
+    const more = $('needs-more');
+    if (more) more.addEventListener('click', () => {
+      document.querySelectorAll('#needs [data-more]').forEach((tr) => (tr.hidden = false));
+      more.remove();
+    });
   }
 
   function loadFilm(keepTime) {
@@ -1251,13 +1027,6 @@
   }
   $('step-prev').addEventListener('click', () => goStep(stepAt(film.t) - (film.t > T0 + stepCount() * stepLen() ? 0 : 1)));
   $('step-next').addEventListener('click', () => goStep(film.t < T0 ? 0 : stepAt(film.t) + 1));
-  $('pic-width').addEventListener('input', (e) => {
-    state.picWidth = Number(e.target.value);
-    $('pic-width-v').textContent = e.target.value;
-  });
-  $('pic-width').addEventListener('change', () => renderSuggestions(false, 'pic'));
-  $('pic-mine').addEventListener('change', () => renderSuggestions(false, 'pic'));
-
   function tick(now) {
     if (film.view) {
       if (film.playing) {
@@ -1309,6 +1078,7 @@
   const ex = LEGO.samplePile();
   setPile(ex.canvas, true);
   setInventory(ex.inventory, true);
+  choose('example', window.MODELS.cat);
   requestAnimationFrame(tick);
 
   // The real-LEGO catalogue loads after the page is up; then every row is checked again.
@@ -1318,7 +1088,6 @@
     state.inv = v.kept;
     renderParts();
     renderReview();
-    renderSuggestions(false);
   });
 
   // Claude lights up when the page runs on claude.ai; elsewhere the page works without it.
@@ -1329,17 +1098,15 @@
     } catch (e) {
       sample = null;
     }
-    $('ai-block').hidden = !sample;
-    $('ai-off').hidden = !!sample;
     $('reader-opts').hidden = !aiReader();
-    $('aidesign').hidden = !CFG.aiEndpoint;
-    if (CFG.aiEndpoint) $('ai-off').hidden = true;
     $('precise-row').hidden = !CFG.aiEndpoint;
     $('reader-note').textContent = aiReader()
       ? (CFG.aiEndpoint ? 'Photos are read by Claude through the PileBuild AI server.' : 'Photos are read by Claude on your claude.ai account.')
       : 'AI reader is off here: spread-out bricks are named one by one; heaps and busy photos get a rough count.';
+    updateDesignButton();
+    designHint();
   })();
-  $('ai-block').hidden = true;
+  updateDesignButton();
 })();
 </script>
 </body>

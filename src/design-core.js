@@ -18,7 +18,7 @@
   const LEGO = root.LEGO;
   const D = (LEGO.designAI = {});
 
-  D.VERSION = 3;
+  D.VERSION = 4;
   D.MAX_ROUNDS = 2; // first design + one fix
   D.MAX_TOKENS = 12000; // per round; a 120-part model in compact form is ~4-6k
 
@@ -139,7 +139,7 @@
   D.userContent = function userContent(o) {
     const want = String(o.want || '').replace(/\s+/g, ' ').trim().slice(0, 200);
     const text = [
-      o.image ? 'The photo shows what to build.' : '',
+      o.image ? 'The photo shows what to build. First work out exactly what it is (for example "toy steam locomotive with tender", "red sports car", "tabby cat"), then design that, and use it as the title.' : '',
       want ? `What to build: ${want}.` : '',
       !o.image && !want ? 'Design something fun and recognisable from these parts.' : '',
       inventoryText(o.inventory),
