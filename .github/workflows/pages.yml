@@ -1,0 +1,56 @@
+name: Deploy site
+
+# Builds PileBuild and publishes it to GitHub Pages on every push to main.
+#   /            PileBuild app (photo of loose bricks -> parts, ideas, instructions)
+#   /player.html the booklet player for the ready-made models
+#   /mosaic.html photo -> LEGO mosaic in the browser
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check models
+        run: |
+          node tools/check-model.cjs cat
+          node tools/check-model.cjs microduck
+      - name: Build site
+        run: |
+          node tools/build-app.cjs
+          mkdir -p _site
+          cp dist/app.html _site/index.html
+          cp index.html _site/player.html
+          cp mosaic.html _site/mosaic.html
+          cp -r src _site/src
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
