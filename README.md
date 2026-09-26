@@ -83,7 +83,7 @@ Coordinates, side-stud mounting and common mistakes are in [reference/modeling.m
 The whole folder is a skill for Claude Code and other agents that support SKILL.md:
 
 ```bash
-git clone <this-repo-url> ~/.claude/skills/lego-build
+git clone https://github.com/Hampshire33/LOGO ~/.claude/skills/lego-build
 ```
 
 Then just ask, e.g. "build an owl out of LEGO and make a horizontal video". The agent designs the model from real parts, checks colours against the catalogue, runs the check and renders the video. Agent instructions are in [SKILL.md](SKILL.md).
