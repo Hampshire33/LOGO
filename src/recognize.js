@@ -33,6 +33,7 @@
       '- When a piece matches one in the PARTS list below, use that id. Otherwise give the best BrickLink part number you can, and its name.',
       '- For colour use a key from the COLOURS list when the piece is that colour. Otherwise give the BrickLink colour name.',
       '- One entry per part + colour, with qty. Count each piece once. Do not guess pieces you cannot see.',
+      '- Only real LEGO part numbers and colours LEGO actually made that part in: every answer is checked against the LEGO catalogue, and anything else is dropped.',
       '- Put anything uncertain (hidden, blurry, not LEGO) in "notes", in one or two short sentences.',
       hint ? `- A simple detector found about ${hint} separate objects; pieces touching each other count as one there.` : '',
       '',
