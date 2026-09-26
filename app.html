@@ -302,7 +302,10 @@
             <div class="row">
               <button id="ai-design" class="primary">Design it</button>
               <label class="toggle small"><input type="checkbox" id="design-mine"> Only my parts</label>
-              <span class="small muted">about 5-20 US cents</span>
+              <label class="small">Size <select id="design-size" aria-label="Model size">
+                <option value="max" selected>Use most of my pile</option><option value="medium">Medium (~60 parts)</option><option value="small">Small (~30 parts)</option>
+              </select></label>
+              <span class="small muted" id="design-cost">about 5-25 US cents</span>
             </div>
             <p class="status" id="design-status"></p>
             <div id="design-slot"></div>
@@ -779,6 +782,7 @@
     state.designs = {};
     renderParts();
     renderSuggestions(true);
+    if (LEGO.designAI) designHint();
   }
 
   function thumb(id, color) {
@@ -1136,7 +1140,7 @@
         meter.add(j.usage, j.model);
         return j;
       }, {
-        image, want, inventory, onlyMine: $('design-mine').checked,
+        image, want, inventory, onlyMine: $('design-mine').checked, size: $('design-size').value,
         onRound: (n) => setStatus($('design-status'), n === 1 ? 'Claude is designing your model…' : 'Claude is fixing a few parts the check found…'),
       });
       r.model = LEGO.realColors(r.model).model;
@@ -1156,6 +1160,14 @@
     }
     btn.disabled = false;
   });
+
+  function designHint() {
+    const inv = state.inv.filter(INV.usable);
+    const n = LEGO.designAI.targetParts(inv, $('design-size').value);
+    const cents = n > 90 ? '15-35' : n > 50 ? '8-25' : '5-15';
+    $('design-cost').textContent = `aims for ~${n} parts · about ${cents} US cents`;
+  }
+  $('design-size').addEventListener('change', designHint);
 
   function renderAiDesigns() {
     const box = $('design-slot');

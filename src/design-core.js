@@ -18,7 +18,7 @@
   const LEGO = root.LEGO;
   const D = (LEGO.designAI = {});
 
-  D.VERSION = 2;
+  D.VERSION = 3;
   D.MAX_ROUNDS = 2; // first design + one fix
   D.MAX_TOKENS = 12000; // per round; a 120-part model in compact form is ~4-6k
 
@@ -39,7 +39,7 @@
       '',
       'DESIGN',
       '- First decide what makes the subject recognisable from the front-left view: silhouette, proportions, main colours, 2-4 key features (wheels, windows, roof, face, legs). Build those; skip tiny details.',
-      '- Scale: about 6-16 studs long, 40-120 parts. Solid, compact, symmetrical where the subject is.',
+      '- Size: aim for the part count given in the request (within about 15%). A bigger model shows the subject better: use the extra parts for body, shape and detail, not for a solid lump. Solid, symmetrical where the subject is.',
       '- Use real techniques: stagger joints like brickwork, plates to tie rows together, slopes for roofs and noses, round plates on side-stud bricks (87087) for wheels and eyes, tiles for smooth tops.',
       '- The key features must be there: a vehicle has wheels, a house a roof and door, an animal legs, ears and eyes. Never drop a key feature to save parts.',
       '- When told to use only the builder\'s parts, work within them (another colour or shorter pieces that add up). Otherwise recognisability comes first: use the builder\'s parts for the bulk, and add the parts the key features need; they go on a shopping list.',
@@ -108,15 +108,26 @@
     return { title: String((input && input.title) || 'My Design').slice(0, 40), theta: 35, phi: 26, steps };
   };
 
+  // How many parts to aim for: small ~30, medium ~60, max = most of the builder's pile.
+  D.SIZES = ['small', 'medium', 'max'];
+  D.targetParts = function targetParts(inv, size) {
+    const owned = (inv || []).filter((r) => LEGO.LIB[r.id] && LEGO.COLORS[r.color]).reduce((t, r) => t + r.qty, 0);
+    if (size === 'small') return 30;
+    if (size === 'medium') return 60;
+    // most of the pile, within what one answer can hold
+    return Math.max(40, Math.min(150, Math.round(owned * 0.8) || 80));
+  };
+
   // Check a model; `inv` given = also list parts beyond what the builder owns.
-  D.review = function review(model, inv, onlyMine) {
+  D.review = function review(model, inv, onlyMine, target) {
     const c = LEGO.checkModel(model);
     const problems = c.problems.map((p) => p.text);
     let extra = [];
     if (inv && LEGO.inv) extra = LEGO.inv.coverage(inv, model).missing;
     const lines = problems.slice(0, 30);
     if (onlyMine && extra.length) lines.push(...extra.slice(0, 15).map((m) => `NOT OWNED  ${m.qty} x ${m.id} ${m.color}`));
-    return { ok: !problems.length, parts: c.parts, steps: c.steps, problems, missing: extra, feedback: lines };
+    if (target && c.parts < target * 0.6) lines.push(`TOO SMALL  model has ${c.parts} parts, aim for about ${target}`);
+    return { ok: !problems.length, parts: c.parts, steps: c.steps, problems, missing: extra, feedback: lines, small: !!(target && c.parts < target * 0.6) };
   };
 
   function inventoryText(inv) {
@@ -133,6 +144,7 @@
       !o.image && !want ? 'Design something fun and recognisable from these parts.' : '',
       inventoryText(o.inventory),
       o.onlyMine ? 'Use only parts the builder owns, and no more of each part + colour than they have.' : 'Use the builder\'s parts for the bulk of the model and add whatever parts the key features need.',
+      `Size: about ${D.targetParts(o.inventory, o.size)} parts` + (o.size === 'max' || !o.size ? ' (use most of the builder\'s pile).' : '.'),
     ].filter(Boolean).join('\n');
     const content = [];
     if (o.image) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: o.image } });
@@ -144,7 +156,7 @@
 
   // Problem lines the checker writes. A fix request may only carry lines of these shapes, so the
   // server can relay them to Claude without becoming a general-purpose proxy.
-  D.PROBLEM_LINE = /^(OVERLAP|FLOATS|UNKNOWN PART|UNKNOWN COLOUR|BAD POSITION|BAD PART|NOT OWNED)\s[\w\s:,.[\]|+#-]{1,160}$/;
+  D.PROBLEM_LINE = /^(OVERLAP|FLOATS|UNKNOWN PART|UNKNOWN COLOUR|BAD POSITION|BAD PART|NOT OWNED|TOO SMALL)\s[\w\s:,.[\]|+#-]{1,160}$/;
 
   // One API request: a first design, or a fix of `previous` (the compact tool input) given the
   // checker's problem lines.
@@ -177,7 +189,8 @@
   // Design in the browser through the site's server: the server makes one Claude call per request,
   // the page checks the result and asks for one fix. callServer(body) -> { input, usage, model }.
   D.viaServer = async function viaServer(callServer, o) {
-    const base = { image: o.image || undefined, want: o.want, inventory: o.inventory, onlyMine: !!o.onlyMine };
+    const base = { image: o.image || undefined, want: o.want, inventory: o.inventory, onlyMine: !!o.onlyMine, size: o.size || 'max' };
+    const target = D.targetParts(o.inventory, o.size || 'max');
     const usage = { input_tokens: 0, output_tokens: 0 };
     let best = null;
     let previous = null;
@@ -191,8 +204,8 @@
       modelName = r.model || modelName;
       if (!r.input) break;
       const m = D.expand(r.input);
-      const check = D.review(m, o.inventory, o.onlyMine);
-      const score = check.problems.length * 3 + (o.onlyMine ? check.missing.length : 0);
+      const check = D.review(m, o.inventory, o.onlyMine, target);
+      const score = check.problems.length * 3 + (o.onlyMine ? check.missing.length : 0) + (check.small ? 5 : 0);
       if (!best || score < best.score) best = { model: m, check, score, round };
       if (!check.feedback.length) break;
       previous = r.input;
@@ -224,8 +237,8 @@
       const use = (res.content || []).find((c) => c.type === 'tool_use' && c.name === D.TOOL.name);
       if (!use) break;
       const m = D.expand(use.input);
-      const check = D.review(m, o.inventory, o.onlyMine);
-      const score = check.problems.length * 3 + (o.onlyMine ? check.missing.length : 0);
+      const check = D.review(m, o.inventory, o.onlyMine, D.targetParts(o.inventory, o.size || 'max'));
+      const score = check.problems.length * 3 + (o.onlyMine ? check.missing.length : 0) + (check.small ? 5 : 0);
       if (!best || score < best.score) best = { model: m, check, score, round };
       if (!check.feedback.length || round === (o.maxRounds || D.MAX_ROUNDS)) break;
       messages.push({ role: 'assistant', content: res.content });

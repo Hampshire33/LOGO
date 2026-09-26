@@ -138,7 +138,8 @@ async function design(env, body, image, model, cors) {
     previous = L.designAI.expand(p) && { title: String(p.title || '').slice(0, 40), steps: p.steps };
     problems = lines;
   }
-  const payload = L.designAI.request({ image: image || null, want: body.want, inventory, onlyMine: !!body.onlyMine, model }, previous, problems);
+  const size = L.designAI.SIZES.includes(body.size) ? body.size : 'max';
+  const payload = L.designAI.request({ image: image || null, want: body.want, inventory, onlyMine: !!body.onlyMine, size, model }, previous, problems);
   const r = await callClaude(env, payload);
   if (!r.ok) return json({ error: r.error, code: r.code }, r.status, cors);
   const input = L.designAI.inputOf(r.data);
