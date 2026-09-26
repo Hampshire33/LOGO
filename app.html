@@ -173,6 +173,16 @@
   .time { font: 13px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; min-width: 88px; text-align: right; }
   .problems { font: 12px/1.5 var(--mono); color: var(--bad); background: var(--panel-2); border-radius: 6px; padding: 8px 10px; max-height: 140px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
   details summary { cursor: pointer; font-size: 13px; color: var(--link); }
+  .stepbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .stepbar .lbl { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 9ch; }
+  .needs table { min-width: 0; table-layout: auto; }
+  .needs td, .needs th { padding: 6px 8px; }
+  .needs td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .needs tr.short td { color: var(--bad); }
+  .needs .sum { font-size: 14px; }
+  .needs .sum b { font-weight: 600; }
+  .tctl { display: grid; gap: 8px; }
+  .tctl label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
   .miss { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .review { display: grid; gap: 10px; border: 1px solid var(--warn); border-radius: 8px; padding: 12px; background: color-mix(in srgb, var(--warn) 6%, var(--panel)); }
   .review-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
@@ -231,6 +241,11 @@
               <button id="target-clear" class="link" hidden>Remove</button>
             </div>
             <div class="row" id="target-colors" aria-label="Main colours in the photo"></div>
+            <div class="tctl" id="target-ctl" hidden>
+              <label for="pic-width">Width of the brick picture: <b id="pic-width-v"></b> studs</label>
+              <input type="range" id="pic-width" min="6" max="28" step="1" value="16">
+              <label class="toggle"><input type="checkbox" id="pic-mine" checked> Only colours I have</label>
+            </div>
           </div>
         </div>
         <p class="small muted">Tip: spread the pieces on a plain, even surface so none touch. A heap works too, but its counts are estimated by colour.</p>
@@ -275,16 +290,23 @@
             <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" aria-label="Position in the instructions">
             <span class="time" id="time">0.0 / 0.0 s</span>
           </div>
+          <div class="stepbar">
+            <button id="step-prev" class="icon-btn" aria-label="Previous step">◀ Step</button>
+            <span class="lbl" id="step-lbl">Step 1 of 1</span>
+            <button id="step-next" class="icon-btn" aria-label="Next step">Step ▶</button>
+          </div>
           <div class="row">
             <label class="toggle"><input type="checkbox" id="landscape"> Landscape</label>
             <span id="check-chip"></span>
             <button id="copy-json" class="link">Copy model file</button>
           </div>
           <div class="problems" id="problems" hidden></div>
+          <div class="needs" id="needs"></div>
         </div>
 
         <div class="sugs">
           <h3>From your parts</h3>
+          <div id="pic-slot"></div>
           <div id="gen-slot"></div>
           <div id="ai-block" class="ideas">
             <div class="row">
@@ -294,7 +316,7 @@
             <p class="status" id="ai-status"></p>
             <div id="ideas" class="ideas"></div>
           </div>
-          <p class="small muted" id="ai-off" hidden>Claude ideas and designs work when this page is opened on claude.ai. The stack below is built on your device.</p>
+          <p class="small muted" id="ai-off" hidden>Add a “What to build” photo above to get a brick picture of it. Claude-designed 3D models work in the claude.ai version of this page.</p>
           <h3 style="margin-top: 6px">Ready-made models</h3>
           <div id="lib-list" class="sugs"></div>
         </div>
@@ -314,6 +336,7 @@
 <script src="src/detect.js"></script>
 <script src="src/recognize.js"></script>
 <script src="src/sample-pile.js"></script>
+<script src="src/brickpic.js"></script>
 <script src="src/models/cat.js"></script>
 <script src="src/models/microduck.js"></script>
 <!-- @inline-end -->
@@ -335,6 +358,7 @@
     ideas: [],
     designs: {},         // idea title -> { model, check }
     review: [],          // pieces the user should confirm or name
+    picWidth: null,      // brick picture width in studs, null = automatic
   };
   let sample = null;
   let caps = null;
@@ -522,10 +546,13 @@
       paint($('target-canvas'), img);
       $('target-empty').hidden = true;
       $('target-clear').hidden = false;
-      const cols = LEGO.recognize.mainColors(img, 4);
+      const cols = LEGO.subjectColors(img, 4);
       $('target-colors').innerHTML = '<span class="small muted">Main colours:</span>' +
         cols.map((c) => `<span class="chip">${swatch(c.key)}${colorName(c.key)}</span>`).join('');
       $('ask-ideas').textContent = 'Design it from my parts';
+      $('target-ctl').hidden = false;
+      state.picWidth = null;
+      renderSuggestions(false, 'pic');
     } catch (err) {
       $('target-colors').innerHTML = '<span class="status err">That file could not be opened as a photo.</span>';
     }
@@ -538,6 +565,8 @@
     $('target-clear').hidden = true;
     $('target-colors').innerHTML = '';
     $('ask-ideas').textContent = 'Ask Claude for ideas';
+    $('target-ctl').hidden = true;
+    renderSuggestions(state.choice && state.choice.key === 'pic');
   });
 
   // ---------------------------------------------------------------- 2. parts list
@@ -706,7 +735,30 @@
     return b;
   }
 
-  function renderSuggestions(autoPick) {
+  function renderSuggestions(autoPick, pickKey) {
+    // brick picture of the target photo
+    const ps = $('pic-slot');
+    ps.innerHTML = '';
+    let pic = null;
+    if (state.target) {
+      const r = LEGO.brickPicture(state.target.img, state.inv, { width: state.picWidth || undefined, onlyMine: $('pic-mine').checked });
+      if (!state.picWidth) {
+        state.picWidth = r.width;
+        $('pic-width').value = String(r.width);
+      }
+      $('pic-width-v').textContent = r.width;
+      pic = r.model;
+      const cov = INV.coverage(state.inv, pic);
+      const miss = cov.missing.reduce((t, m) => t + m.qty, 0);
+      const b = sugButton('pic', 'Brick picture of your photo',
+        `${r.width} studs wide, ${r.height} bricks tall, built from 1-wide bricks${r.stand ? ' on a stand of 2-wide bricks' : ''}. ` +
+        (miss ? `Needs ${cov.total} pieces: you have ${cov.exact}, ${miss} to get.` : `Needs ${cov.total} pieces, all from your pile.`) +
+        (r.found ? '' : ' The subject did not stand out from its background, so the middle of the photo was used.'),
+        `<span class="chip ${miss ? 'warn' : 'good'}">${cov.total} parts</span>`);
+      b.addEventListener('click', () => choose('pic', pic));
+      ps.appendChild(b);
+    }
+
     // generated from your parts
     const gen = INV.generate(state.inv);
     const gs = $('gen-slot');
@@ -756,8 +808,13 @@
       }
     });
 
-    if (autoPick || !state.choice) {
-      if (first) choose(first[0], first[1]);
+    if (pickKey === 'pic' && pic) {
+      choose('pic', pic);
+    } else if (state.choice && state.choice.key === 'pic' && pic) {
+      choose('pic', pic, null, true);
+    } else if (autoPick || !state.choice) {
+      if (pic) choose('pic', pic);
+      else if (first) choose(first[0], first[1]);
       else choose('lib-cat', window.MODELS.cat);
     } else {
       markChoice();
@@ -820,7 +877,7 @@
   const fc = $('film');
   const fctx = fc.getContext('2d');
 
-  function choose(key, model, check) {
+  function choose(key, model, check, keepTime) {
     state.choice = { key, model };
     markChoice();
     const c = check || (() => {
@@ -836,19 +893,59 @@
     $('problems').hidden = !problems.length;
     $('problems').textContent = problems.join('\n');
     $('json-out').hidden = true;
-    loadFilm();
+    renderNeeds(model);
+    loadFilm(keepTime);
   }
 
-  function loadFilm() {
+  // What the chosen model needs, against what you have.
+  function renderNeeds(model) {
+    const cov = INV.coverage(state.inv, model);
+    const have = new Map(state.inv.map((r) => [r.id + '|' + r.color, r.qty]));
+    const need = INV.needs(model).sort((a, b) => b.qty - a.qty);
+    const miss = cov.missing.reduce((t, m) => t + m.qty, 0);
+    const steps = model.steps.length;
+    $('needs').innerHTML =
+      `<h3 style="margin-block: 6px">Parts needed</h3>` +
+      `<p class="sum"><b>${cov.total}</b> pieces in <b>${steps}</b> steps · you have <b>${cov.exact}</b>` +
+      (miss ? ` · <b style="color:var(--bad)">${miss}</b> to get` : ' · nothing missing') + '</p>' +
+      '<div class="tablewrap"><table><thead><tr><th>Part</th><th>Colour</th><th class="n">Need</th><th class="n">Have</th></tr></thead><tbody>' +
+      need.map((n) => {
+        const h = have.get(n.id + '|' + n.color) || 0;
+        return `<tr class="${h < n.qty ? 'short' : ''}"><td><span class="pno">${n.id}</span> ${esc(LEGO.LIB[n.id].label)}</td>` +
+          `<td>${swatch(n.color)} ${esc(colorName(n.color))}</td><td class="n">${n.qty}</td><td class="n">${Math.min(h, 999)}</td></tr>`;
+      }).join('') + '</tbody></table></div>';
+  }
+
+  function loadFilm(keepTime) {
     if (!state.choice) return;
     film.view = LEGO.booklet(state.choice.model, $('landscape').checked ? 'horizontal' : 'vertical');
     fc.width = film.view.W;
     fc.height = film.view.H;
-    film.t = 0;
+    if (!keepTime || film.t > film.view.duration) film.t = 0;
     film.last = null;
     $('scrub').max = String(film.view.duration);
   }
-  $('landscape').addEventListener('change', loadFilm);
+  $('landscape').addEventListener('change', () => loadFilm(true));
+
+  // Steps: the booklet shows step k (0-based) from 0.55 + 0.85 k seconds.
+  const T0 = 0.55;
+  const stepLen = () => (state.choice && state.choice.model.step) || 0.85;
+  const stepCount = () => (film.view ? film.view.steps : 1);
+  const stepAt = (t) => Math.max(0, Math.min(stepCount() - 1, Math.floor((t - T0) / stepLen())));
+  function goStep(k) {
+    const n = stepCount();
+    k = Math.max(0, Math.min(n - 1, k));
+    film.t = T0 + (k + 1) * stepLen() - 0.02; // the step's parts have landed
+    setPlaying(false);
+  }
+  $('step-prev').addEventListener('click', () => goStep(stepAt(film.t) - (film.t > T0 + stepCount() * stepLen() ? 0 : 1)));
+  $('step-next').addEventListener('click', () => goStep(film.t < T0 ? 0 : stepAt(film.t) + 1));
+  $('pic-width').addEventListener('input', (e) => {
+    state.picWidth = Number(e.target.value);
+    $('pic-width-v').textContent = e.target.value;
+  });
+  $('pic-width').addEventListener('change', () => renderSuggestions(false, 'pic'));
+  $('pic-mine').addEventListener('change', () => renderSuggestions(false, 'pic'));
 
   function tick(now) {
     if (film.view) {
@@ -860,6 +957,8 @@
       film.view.draw(fctx, film.t);
       $('scrub').value = String(film.t);
       $('time').textContent = `${film.t.toFixed(1)} / ${film.view.duration.toFixed(1)} s`;
+      const built = film.t >= T0 + stepCount() * stepLen();
+      $('step-lbl').textContent = film.t < T0 ? `Start · ${stepCount()} steps` : built ? `Done · ${stepCount()} steps` : `Step ${stepAt(film.t) + 1} of ${stepCount()}`;
     }
     requestAnimationFrame(tick);
   }

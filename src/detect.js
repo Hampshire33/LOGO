@@ -206,7 +206,7 @@
     else h = 60 * ((r - g) / (mx - mn)) + 240;
     if (h < 12 || h >= 342) return 'red';
     if (h < 33) return v < 0.45 ? 'brown' : 'orange';
-    if (h < 68) return s < 0.4 && v > 0.7 ? 'tan' : 'yellow';
+    if (h < 68) return s < 0.3 && v > 0.7 ? 'tan' : 'yellow';
     if (h < 90) return 'lime';
     if (h < 170) return 'green';
     if (h < 198) return 'azure';

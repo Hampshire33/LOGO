@@ -17,6 +17,9 @@
   const INV = (LEGO.inv = {});
   const key = (id, color) => id + '|' + color;
 
+  // Recognisers often return an older or variant number for the same brick shape.
+  INV.ALIAS = { '3065': '3004', '3066': '3010', '3067': '3009', '3004b': '3004', '3001old': '3001', '3003old': '3003' };
+
   INV.usable = (row) => !!(LEGO.LIB[row.id] && LEGO.COLORS[row.color]);
 
   // Merge rows with the same part and colour.
@@ -25,10 +28,11 @@
     for (const r of rows || []) {
       const qty = Math.max(0, Math.round(Number(r.qty) || 0));
       if (!r.id || !qty) continue;
-      const k = key(String(r.id), String(r.color || ''));
+      const id = INV.ALIAS[String(r.id)] || String(r.id);
+      const k = key(id, String(r.color || ''));
       const cur = m.get(k);
       if (cur) cur.qty += qty;
-      else m.set(k, { id: String(r.id), color: String(r.color || ''), qty, name: r.name || '' });
+      else m.set(k, { id, color: String(r.color || ''), qty, name: r.name || '' });
     }
     return [...m.values()];
   };
