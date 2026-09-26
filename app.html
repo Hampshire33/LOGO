@@ -174,6 +174,15 @@
   .problems { font: 12px/1.5 var(--mono); color: var(--bad); background: var(--panel-2); border-radius: 6px; padding: 8px 10px; max-height: 140px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
   details summary { cursor: pointer; font-size: 13px; color: var(--link); }
   .miss { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .review { display: grid; gap: 10px; border: 1px solid var(--warn); border-radius: 8px; padding: 12px; background: color-mix(in srgb, var(--warn) 6%, var(--panel)); }
+  .review-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+  .rv { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 6px 10px; align-items: start; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .rv img { width: 72px; height: 72px; object-fit: cover; border-radius: 6px; grid-row: span 3; background: #fff; }
+  .rv .why { font-size: 12px; color: var(--muted); }
+  .rv .why b { color: var(--ink); font-weight: 600; }
+  .rv select { width: 100%; }
+  .rv .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rv .acts button { min-height: 34px; padding: 6px 10px; }
   textarea { width: 100%; min-height: 120px; font: 12px/1.4 var(--mono); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
   footer { color: var(--muted); font-size: 12px; max-width: 70ch; }
 
@@ -231,6 +240,14 @@
       <section class="panel" aria-labelledby="h-parts">
         <div class="head"><span class="num">2</span><h2 id="h-parts">Your parts</h2></div>
         <div class="totals" id="totals"></div>
+        <div class="review" id="review" hidden>
+          <div class="row" style="justify-content: space-between">
+            <h3 id="review-title">Check these pieces</h3>
+            <button class="link" id="review-close">Done checking</button>
+          </div>
+          <p class="small muted">Numbers match the boxes on your photo. Pick the right part, then add it to your list.</p>
+          <div class="review-list" id="review-list"></div>
+        </div>
         <div class="tablewrap">
           <table>
             <colgroup><col class="c-pic"><col><col class="c-col"><col class="c-qty"><col class="c-x"></colgroup>
@@ -317,6 +334,7 @@
     choice: null,        // { key, model, check }
     ideas: [],
     designs: {},         // idea title -> { model, check }
+    review: [],          // pieces the user should confirm or name
   };
   let sample = null;
   let caps = null;
@@ -405,6 +423,8 @@
   function setPile(img, example) {
     const found = LEGO.detect(img);
     state.pile = { img, boxes: found.boxes, example };
+    state.review = [];
+    renderReview();
     showPile();
     const n = found.boxes.length;
     setStatus($('pile-status'), n
@@ -441,9 +461,15 @@
         if (!state.pile.boxes.length) throw { local: 'No pieces were found to identify.' };
         const r = await LEGO.recognize.brickognize(state.pile.img, state.pile.boxes, (d, t) =>
           setStatus($('pile-status'), `Identifying piece ${d} of ${t}…`));
-        if (!r.rows.length) throw { local: 'Brickognize could not be reached from this page (' + (r.lastError || 'no answer') + '). Add parts by hand below.' };
+        const unreachable = !r.rows.length && r.pieces.every((p) => p.error && p.error !== 'no match');
+        if (unreachable) throw { local: 'Brickognize could not be reached from this page (' + (r.lastError || 'no answer') + '). Add parts by hand below.' };
         setInventory(r.rows, false);
-        setStatus($('pile-status'), `Identified ${INV.count(r.rows)} pieces` + (r.failed ? `, ${r.failed} could not be named` : '') + '. Check the list below.');
+        state.review = r.pieces.filter((p) => !p.id || (p.score != null && p.score < LEGO.recognize.WEAK));
+        renderReview();
+        const named = r.pieces.length - r.failed;
+        setStatus($('pile-status'),
+          `Named ${named} of ${r.pieces.length} piece${r.pieces.length === 1 ? '' : 's'}.` +
+          (state.review.length ? ` ${state.review.length} need${state.review.length === 1 ? 's' : ''} a quick check under “Your parts”.` : ' Check the list below.'));
       } else {
         throw { local: 'Photo reading needs Claude, which is not available in this view. Add parts by hand below.' };
       }
@@ -483,6 +509,71 @@
   });
 
   // ---------------------------------------------------------------- 2. parts list
+
+  // ---------------------------------------------------------------- 2b. pieces to check
+
+  function renderReview() {
+    const list = state.review || [];
+    $('review').hidden = !list.length;
+    if (!list.length) return;
+    $('review-title').textContent = `Check ${list.length} piece${list.length === 1 ? '' : 's'}`;
+    const box = $('review-list');
+    box.innerHTML = '';
+    list.forEach((p, k) => {
+      const inLib = p.id && LEGO.LIB[p.id];
+      const why = !p.id
+        ? `<b>#${p.n}</b> not recognised${p.error && p.error !== 'no match' ? ' (' + esc(p.error) + ')' : ''}`
+        : `<b>#${p.n}</b> best guess ${esc(p.id)} ${esc(p.name)}` + (p.score != null ? `, ${Math.round(p.score * 100)}% sure` : '') + '. It is in your list; change it here if wrong.';
+      const guessOpt = p.id && !inLib ? `<option value="${esc(p.id)}">${esc(p.id)} · ${esc(p.name || 'guess')}</option>` : '';
+      const altOpts = (p.alts || []).filter((a) => !LEGO.LIB[a.id]).map((a) => `<option value="${esc(a.id)}">${esc(a.id)} · ${esc(a.name)}</option>`).join('');
+      const el = document.createElement('div');
+      el.className = 'rv';
+      el.innerHTML =
+        `<img alt="Piece ${p.n} from your photo" src="${p.crop || ''}">` +
+        `<span class="why">${why}</span>` +
+        `<select aria-label="Part for piece ${p.n}" data-k="${k}" data-f="id">${p.id ? '' : '<option value="">Choose part…</option>'}${guessOpt}${altOpts}${partOptions}</select>` +
+        `<select aria-label="Colour for piece ${p.n}" data-k="${k}" data-f="color">${colorOptions}</select>` +
+        `<span></span><div class="acts">` +
+        (p.id ? `<button data-k="${k}" data-act="keep">Looks right</button><button class="primary" data-k="${k}" data-act="swap">Change</button>`
+              : `<button class="primary" data-k="${k}" data-act="add">Add to list</button><button data-k="${k}" data-act="skip">Not LEGO</button>`) +
+        '</div>';
+      el.querySelector('[data-f=id]').value = p.id || '';
+      el.querySelector('[data-f=color]').value = p.color;
+      box.appendChild(el);
+    });
+  }
+
+  $('review-list').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const k = Number(b.dataset.k);
+    const p = state.review[k];
+    const card = b.closest('.rv');
+    const id = card.querySelector('[data-f=id]').value;
+    const color = card.querySelector('[data-f=color]').value;
+    const act = b.dataset.act;
+    if ((act === 'add' || act === 'swap') && !id) {
+      card.querySelector('[data-f=id]').focus();
+      return;
+    }
+    let rows = state.inv.slice();
+    if (act === 'swap') {
+      // take one of the guessed part out, put the chosen one in
+      const r = rows.find((x) => x.id === p.id && x.color === p.color);
+      if (r) r.qty -= 1;
+      rows = rows.filter((x) => x.qty > 0);
+    }
+    if (act === 'add' || act === 'swap') {
+      rows.push({ id, color, qty: 1, name: LEGO.LIB[id] ? LEGO.LIB[id].label : '' });
+    }
+    state.review.splice(k, 1);
+    if (act === 'add' || act === 'swap') setInventory(rows, false);
+    renderReview();
+  });
+  $('review-close').addEventListener('click', () => {
+    state.review = [];
+    renderReview();
+  });
 
   function setInventory(rows, example) {
     state.inv = INV.from(rows);

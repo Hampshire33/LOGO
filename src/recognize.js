@@ -53,19 +53,25 @@
 
   // ------------------------------------------------------------------ Brickognize, one part per crop
 
-  REC.BRICKOGNIZE = 'https://api.brickognize.com/predict/parts/?predict_color=true&top_k_items=1&top_k_colors=1';
+  // min_similarity_items is lowered from the API's 0.5: phone photos with shadows and odd angles
+  // often score just under it and came back empty. Weak matches are kept and flagged instead.
+  REC.BRICKOGNIZE = 'https://api.brickognize.com/predict/parts/?predict_color=true&top_k_items=3&top_k_colors=1&min_similarity_items=0.15';
+  REC.WEAK = 0.45;
 
+  // Resolves { rows, pieces, failed, weak, lastError }. `pieces` has one entry per detected box,
+  // in box order: { n, box, crop (data URL), id?, name?, color, score?, error? }. Pieces without
+  // an id are the ones the user names by hand.
   REC.brickognize = async function brickognize(image, boxes, onProgress) {
-    const rows = [];
-    let failed = 0;
+    const pieces = boxes.map((box, i) => ({ n: i + 1, box, color: INV.nearestColor(box.rgb) }));
     let lastError = '';
     let done = 0;
-    const queue = boxes.slice();
+    const queue = pieces.slice();
     async function worker() {
       while (queue.length) {
-        const box = queue.shift();
-        const crop = LEGO.detect.crop(image, box);
-        const blob = await new Promise((res) => crop.toBlob(res, 'image/jpeg', 0.9));
+        const p = queue.shift();
+        const crop = LEGO.detect.crop(image, p.box, 448);
+        p.crop = crop.toDataURL('image/jpeg', 0.8);
+        const blob = await new Promise((res) => crop.toBlob(res, 'image/jpeg', 0.92));
         try {
           const fd = new FormData();
           fd.append('query_image', blob, 'piece.jpg');
@@ -75,22 +81,28 @@
           const item = j.items && j.items[0];
           if (!item) throw new Error('no match');
           const cName = (j.colors && j.colors[0] && j.colors[0].name) || (item.colors && item.colors[0] && item.colors[0].name);
-          rows.push({
-            id: String(item.id),
-            name: item.name || '',
-            color: INV.colorKey(cName) || INV.nearestColor(box.rgb),
-            qty: 1,
-          });
+          p.id = String(item.id);
+          p.name = item.name || '';
+          p.score = typeof item.score === 'number' ? item.score : null;
+          p.color = INV.colorKey(cName) || p.color;
+          p.alts = (j.items || []).slice(1, 3).map((a) => ({ id: String(a.id), name: a.name || '' }));
         } catch (e) {
-          failed++;
-          lastError = e && e.message ? e.message : String(e);
+          p.error = e && e.message ? e.message : String(e);
+          lastError = p.error;
         }
         done++;
         if (onProgress) onProgress(done, boxes.length);
       }
     }
     await Promise.all([worker(), worker(), worker()]);
-    return { rows: INV.from(rows), failed, lastError };
+    const named = pieces.filter((p) => p.id);
+    return {
+      rows: INV.from(named.map((p) => ({ id: p.id, name: p.name, color: p.color, qty: 1 }))),
+      pieces,
+      failed: pieces.length - named.length,
+      weak: named.filter((p) => p.score != null && p.score < REC.WEAK).length,
+      lastError,
+    };
   };
 
   // ------------------------------------------------------------------ main colours of a target photo
