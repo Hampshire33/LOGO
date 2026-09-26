@@ -68,13 +68,15 @@ export default {
     const precise = body.precise === true && env.ALLOW_PRECISE !== '0';
     const model = isDesign ? env.DESIGN_MODEL || 'claude-opus-5-5' : precise ? preciseModel : defaultModel;
     // a design is several long answers: it counts as 5 reads against the caps
-    const weight = isDesign ? 5 : precise ? 3 : 1;
+    // a fix round of a design is a shorter follow-up: it counts 2
+    const weight = isDesign ? (body.fix ? 2 : 5) : precise ? 3 : 1;
 
     // Daily caps (reads): per visitor and for the whole site. Needs the LIMITS KV binding.
     if (env.LIMITS) {
-      const day = new Date().toISOString().slice(0, 10);
+      // LIMIT_EPOCH in the key: changing it in wrangler.toml resets today's counters
+      const day = (env.LIMIT_EPOCH || '1') + ':' + new Date().toISOString().slice(0, 10);
       const ip = req.headers.get('cf-connecting-ip') || 'unknown';
-      const perIp = Number(env.PER_IP_DAILY || 20);
+      const perIp = Number(env.PER_IP_DAILY || 60);
       const all = Number(env.DAILY_TILES || 200);
       const [a, b] = await Promise.all([env.LIMITS.get(`ip:${day}:${ip}`), env.LIMITS.get(`all:${day}`)]);
       if (Number(a || 0) + weight > perIp) return json({ error: 'Daily limit for this device reached. Try again tomorrow.', code: 'limit_visitor' }, 429, cors);

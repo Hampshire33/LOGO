@@ -16,8 +16,10 @@ ALLOW_PRECISE = "1"
 DESIGN_MODEL = "claude-opus-5-5"
 # Daily caps in photo reads (a small photo is 1 read; a busy phone photo 1 overview + up to 9 tiles).
 # At ~5-25 US cents a read with Opus 5.5, 200 reads a day is at most ~$50: set your console spend limit too.
-PER_IP_DAILY = "20"
+PER_IP_DAILY = "60"
 DAILY_TILES = "200"
+# Change to reset today's counters (e.g. after testing).
+LIMIT_EPOCH = "2"
 
 # The deploy workflow creates the LIMITS namespace and fills in its id below.
 # [[kv_namespaces]]

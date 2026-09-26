@@ -26,7 +26,7 @@ separately from a claude.ai plan. The page shows the cost of every read right af
 Measured on the test bench (EVAL-RESULTS.md): a normal read about 2.5 cents, a precise read
 about 4.5 cents.
 
-Daily caps, counted in reads: 20 per visitor and 200 for the whole site. Change them in
+Daily caps, counted in reads: 60 per visitor and 200 for the whole site (a design counts 5, its fix round 2). To reset today's counters, change `LIMIT_EPOCH` in `worker/wrangler.toml`. Change them in
 `worker/wrangler.toml`. With auto-reload off, spending can never exceed the credit you buy.
 
 ## 1. Anthropic API key
